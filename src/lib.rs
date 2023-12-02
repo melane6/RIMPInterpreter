@@ -1,11 +1,12 @@
-mod utils;
+mod debugger;
+mod evaluator;
 mod lexer;
 mod parser;
-mod evaluator;
-mod debugger;
+mod utils;
+mod regex;
 
-use wasm_bindgen::prelude::*;
 use crate::utils::init_logging;
+use wasm_bindgen::prelude::*;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
@@ -14,13 +15,13 @@ use crate::utils::init_logging;
 static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 #[wasm_bindgen]
-extern {
+extern "C" {
     fn alert(s: &str);
 }
 
 #[wasm_bindgen]
 pub fn greet() {
-    alert("Hello, testInterpreterWeb!");
+    alert("Hello, RIMPInterpreter!");
 }
 
 pub fn initialize_library() {
