@@ -1,3 +1,5 @@
+use std::fmt;
+use std::fmt::write;
 use log::debug;
 use std::str::FromStr;
 use crate::regex::Regex::{Char, Range};
@@ -379,12 +381,12 @@ impl Language {
                                 &Regex::alt_r(
                                     "then",
                                     &Regex::alt_r(
-                                        "read",
+                                        "call",
                                         &Regex::alt_r(
                                             "true",
                                             &Regex::alt_r(
                                                 "false",
-                                                &Regex::alt_r("for", &Regex::alt("do", "write")),
+                                                &Regex::alt_r("for", &Regex::alt("do", "uncall")),
                                             ),
                                         ),
                                     ),
@@ -518,16 +520,137 @@ pub enum Token {
     LBracket,
     RBracket,
     Id(String),
-    Op(String),
+    FnId(String),
+    Op(Op),
     Num(i64),
-    Keyword(String),
+    Keyword(Keyword),
     String(String),
     Comment(String),
     Whitespaces(String),
 }
 
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub enum Op{
+    Assign,
+    Unassign,
+    NotEqual,
+    Equal,
+    LessThanEqual,
+    GreaterThanEqual,
+    Mod,
+    Or,
+    And,
+    LessThan,
+    GreaterThan,
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Power,
+}
+
+impl fmt::Debug for Op {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Op::Assign => write!(f, ":="),
+            Op::Unassign => write!(f, ":!"),
+            Op::NotEqual => write!(f, "!="),
+            Op::Equal => write!(f, "=="),
+            Op::LessThanEqual => write!(f, "<="),
+            Op::GreaterThanEqual => write!(f, ">="),
+            Op::Mod => write!(f, "%"),
+            Op::Or => write!(f, "||"),
+            Op::And => write!(f, "&&"),
+            Op::LessThan => write!(f, "<"),
+            Op::GreaterThan => write!(f, ">"),
+            Op::Plus => write!(f, "+"),
+            Op::Minus => write!(f, "-"),
+            Op::Multiply => write!(f, "*"),
+            Op::Divide => write!(f, "/"),
+            Op::Power => write!(f, "^"),
+        }
+    }
+}
+
+impl FromStr for Op {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            ":=" => Ok(Op::Assign),
+            "!=" => Ok(Op::NotEqual),
+            "==" => Ok(Op::Equal),
+            "<=" => Ok(Op::LessThanEqual),
+            ">=" => Ok(Op::GreaterThanEqual),
+            "%" => Ok(Op::Mod),
+            "||" => Ok(Op::Or),
+            "&&" => Ok(Op::And),
+            "<" => Ok(Op::LessThan),
+            ">" => Ok(Op::GreaterThan),
+            "+" => Ok(Op::Plus),
+            "-" => Ok(Op::Minus),
+            "*" => Ok(Op::Multiply),
+            "/" => Ok(Op::Divide),
+            _ => Err(()),
+        }
+    }
+}
+#[derive(Clone, Eq, Hash, PartialEq)]
+pub enum Keyword {
+    Skip,
+    While,
+    Do,
+    If,
+    Else,
+    Then,
+    True,
+    False,
+    For,
+    Call,
+    Uncall,
+}
+
+impl FromStr for Keyword {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "skip" => Ok(Keyword::Skip),
+            "while" => Ok(Keyword::While),
+            "do" => Ok(Keyword::Do),
+            "if" => Ok(Keyword::If),
+            "else" => Ok(Keyword::Else),
+            "then" => Ok(Keyword::Then),
+            "true" => Ok(Keyword::True),
+            "false" => Ok(Keyword::False),
+            "for" => Ok(Keyword::For),
+            "call" => Ok(Keyword::Call),
+            "uncall" => Ok(Keyword::Uncall),
+            _ => Err(()),
+        }
+    }
+}
+
+impl fmt::Debug for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Keyword::Skip => write!(f, "skip"),
+            Keyword::While => write!(f, "while"),
+            Keyword::Do => write!(f, "do"),
+            Keyword::If => write!(f, "if"),
+            Keyword::Else => write!(f, "else"),
+            Keyword::Then => write!(f, "then"),
+            Keyword::True => write!(f, "true"),
+            Keyword::False => write!(f, "false"),
+            Keyword::For => write!(f, "for"),
+            Keyword::Call => write!(f, "call"),
+            Keyword::Uncall => write!(f, "uncall"),
+        }
+    }
+}
+
 fn token(s1: &str, s2: &str) -> Option<Token> {
-    // println!("s1: {} s2: {}", s1, s2);
+    debug!("s1: {} s2: {}", s1, s2);
     match (s1, s2) {
         ("s", ";") => Some(Token::Semi),
         ("p", "{") => Some(Token::LParent),
@@ -535,19 +658,18 @@ fn token(s1: &str, s2: &str) -> Option<Token> {
         ("p", "(") => Some(Token::LBracket),
         ("p", ")") => Some(Token::RBracket),
         ("i", s) => Some(Token::Id(s.to_string())),
-        ("o", s) => Some(Token::Op(s.to_string())),
+        ("o", s) => Some(Token::Op(Op::from_str(s).unwrap())),
         ("n", s) => Some(Token::Num(s.parse().ok().unwrap())),
-        ("k", s) => Some(Token::Keyword(s.to_string())),
+        ("k", s) => Some(Token::Keyword(Keyword::from_str(s).unwrap())),
         ("str", s) => Some(Token::String(escape(s).to_string())),
-        // ("c", s) => Some(Token::Comment(s.to_string())),
-        // ("w", w) => Some(Token::Whitespaces(w.to_string())),
+        ("fn", s) => Some(Token::FnId(s.to_string())),
         _ => None
     }
 }
 
 fn escape(s: &str) -> String {
     let mut escaped = String::new();
-    println!("s escape: {}", s);
+    debug!("s escape: {}", s);
     for c in s.chars() {
         match c {
             '\n' => escaped.push_str("\\n"),
