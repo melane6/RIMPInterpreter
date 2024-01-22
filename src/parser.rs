@@ -133,14 +133,17 @@ impl Parser {
                 match self.consume() {
                     Some(Token::Op(Op::Assign)) => {
                         match self.parse_aexp() {
-                            Ok(aexp) => Ok(Stmt::Assign(x.clone(), aexp)),
+                            Ok(aexp) => {
+                                self.variables.insert(x.clone(), Expression::Aexp(aexp.clone()));
+                                Ok(Stmt::Assign(x.clone(), aexp))
+                            },
                             Err(e) => Err(e)
                         }
                     },
                     Some(Token::Op(Op::Unassign)) => {
                         // Need to check that x is assigned
-                        if true {
-                            return Err(ParseError::SyntaxError("Variable is not assigned".to_string()));
+                        if !self.variables.contains_key(x) {
+                            return Err(ParseError::SyntaxError("Variable has not been assigned yet".to_string()));
                         }
                         match self.parse_aexp() {
                             Ok(aexp) => Ok(Stmt::Unassign(x.clone(), aexp)),
@@ -194,24 +197,22 @@ impl Parser {
                     Err(e) => Err(e)
                 }
             },
+            Some(Token::Keyword(Keyword::Fn)) => {
+                // fn id (args) block
+                self.consume();
+                match self.parse_id() {
+                    Ok(id) => {
+                        match self.consume() {
+                            None => {}
+                            Some(_) => {}
+                        }
+                    }
+                }
+
+
+            }
             _ => {}
         }
-    }
-
-    fn parse_assign(&mut self) -> ParseResult<Stmt> {
-        unimplemented!("Need to implement")
-    }
-
-    fn parse_unassign(&mut self) -> ParseResult<Stmt> {
-        unimplemented!("Need to implement")
-    }
-
-    fn parse_if(&mut self) -> ParseResult<Stmt> {
-        unimplemented!("Need to implement")
-    }
-
-    fn parse_while(&mut self) -> ParseResult<Stmt> {
-        unimplemented!("Need to implement")
     }
 
     fn parse_aexp(&mut self) -> ParseResult<ArithmeticExpr> {

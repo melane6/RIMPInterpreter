@@ -553,7 +553,7 @@ impl fmt::Debug for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Op::Assign => write!(f, ":="),
-            Op::Unassign => write!(f, ":!"),
+            Op::Unassign => write!(f, "=:"),
             Op::NotEqual => write!(f, "!="),
             Op::Equal => write!(f, "=="),
             Op::LessThanEqual => write!(f, "<="),
@@ -607,7 +607,7 @@ pub enum Keyword {
     False,
     For,
     Call,
-    Uncall,
+    Fn
 }
 
 impl FromStr for Keyword {
@@ -625,7 +625,7 @@ impl FromStr for Keyword {
             "false" => Ok(Keyword::False),
             "for" => Ok(Keyword::For),
             "call" => Ok(Keyword::Call),
-            "uncall" => Ok(Keyword::Uncall),
+            "fn" => Ok(Keyword::Fn),
             _ => Err(()),
         }
     }
@@ -644,7 +644,7 @@ impl fmt::Debug for Keyword {
             Keyword::False => write!(f, "false"),
             Keyword::For => write!(f, "for"),
             Keyword::Call => write!(f, "call"),
-            Keyword::Uncall => write!(f, "uncall"),
+            Keyword::Fn => write!(f, "fn"),
         }
     }
 }
@@ -661,7 +661,7 @@ fn token(s1: &str, s2: &str) -> Option<Token> {
         ("o", s) => Some(Token::Op(Op::from_str(s).unwrap())),
         ("n", s) => Some(Token::Num(s.parse().ok().unwrap())),
         ("k", s) => Some(Token::Keyword(Keyword::from_str(s).unwrap())),
-        ("str", s) => Some(Token::String(escape(s).to_string())),
+        ("str", s) => Some(Token::String(escape(s))),
         ("fn", s) => Some(Token::FnId(s.to_string())),
         _ => None
     }
@@ -669,14 +669,11 @@ fn token(s1: &str, s2: &str) -> Option<Token> {
 
 fn escape(s: &str) -> String {
     let mut escaped = String::new();
-    debug!("s escape: {}", s);
-    for c in s.chars() {
-        match c {
-            '\n' => escaped.push_str("\\n"),
-            '\t' => escaped.push_str("\\t"),
-            '\r' => escaped.push_str("\\r"),
-            _ => escaped.push(c)
-        }
+    match s {
+        "\"\\n\""=> escaped.push_str("\n"),
+        "\"\\t\"" => escaped.push_str("\t"),
+        "\"\\r\"" => escaped.push_str("\r"),
+        _ => escaped.push_str(s)
     }
     escaped
 }
