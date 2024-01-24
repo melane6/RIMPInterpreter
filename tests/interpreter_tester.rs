@@ -1,1 +1,1 @@
-use {RIMPInterpreter};
+use RIMPInterpreter;

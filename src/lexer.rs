@@ -1,9 +1,9 @@
-use std::fmt;
-use std::fmt::write;
-use log::debug;
-use std::str::FromStr;
 use crate::regex::Regex::{Char, Range};
 use crate::regex::{der, nullable, Regex};
+use log::debug;
+use std::fmt;
+use std::fmt::Formatter;
+use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Val {
@@ -227,14 +227,14 @@ pub fn f_seq_empty1(
     f1: Box<dyn Fn(Box<Val>) -> Box<Val>>,
     f2: Box<dyn Fn(Box<Val>) -> Box<Val>>,
 ) -> Box<dyn Fn(Box<Val>) -> Box<Val>> {
-    Box::new(move |v| Box::new({ Val::Seq(f1(Box::new(Val::Empty)), f2(v)) }))
+    Box::new(move |v| Box::new(Val::Seq(f1(Box::new(Val::Empty)), f2(v))))
 }
 
 pub fn f_seq_empty2(
     f1: Box<dyn Fn(Box<Val>) -> Box<Val>>,
     f2: Box<dyn Fn(Box<Val>) -> Box<Val>>,
 ) -> Box<dyn Fn(Box<Val>) -> Box<Val>> {
-    Box::new(move |v| Box::new({ Val::Seq(f1(v), f2(Box::new(Val::Empty))) }))
+    Box::new(move |v| Box::new(Val::Seq(f1(v), f2(Box::new(Val::Empty)))))
 }
 
 pub fn f_alt(
@@ -474,15 +474,14 @@ impl Language {
                     Box::new(Language::EndOfLine.regex()),
                 )),
             ),
-            Language::CHARACTERS => Regex::Star(
-                Box::new(Regex::alt_rs(
-                    &Language::SYM.regex(),
-                    &Regex::alt_rs(
-                        &Language::DIGIT.regex(),
-                        &Language::PARENTHESIS.regex())))),
+            Language::CHARACTERS => Regex::Star(Box::new(Regex::alt_rs(
+                &Language::SYM.regex(),
+                &Regex::alt_rs(&Language::DIGIT.regex(), &Language::PARENTHESIS.regex()),
+            ))),
             Language::EndOfLine => Regex::Alt(
                 Box::new(Char('\n')),
-                Box::new(Regex::from_str("\r\n").unwrap())),
+                Box::new(Regex::from_str("\r\n").unwrap()),
+            ),
             Language::RIMPRegex => Regex::Star(Box::new(Regex::alt_rs(
                 &Regex::Recd("k".to_string(), Box::new(Language::KEYWORD.regex())),
                 &Regex::alt_rs(
@@ -494,23 +493,35 @@ impl Language {
                             &Regex::alt_rs(
                                 &Regex::Recd("s".to_string(), Box::new(Language::SEMI.regex())),
                                 &Regex::alt_rs(
-                                    &Regex::Recd("c".to_string(), Box::new(Language::COMMENTS.regex())),
+                                    &Regex::Recd(
+                                        "c".to_string(),
+                                        Box::new(Language::COMMENTS.regex()),
+                                    ),
                                     &Regex::alt_rs(
-                                        &Regex::Recd("str".to_string(), Box::new(Language::STRING.regex())),
+                                        &Regex::Recd(
+                                            "str".to_string(),
+                                            Box::new(Language::STRING.regex()),
+                                        ),
                                         &Regex::alt_rs(
-                                            &Regex::Recd("p".to_string(), Box::new(Language::PARENTHESIS.regex())),
-                                            &Regex::Recd("w".to_string(), Box::new(Language::WHITESPACE.regex())),
+                                            &Regex::Recd(
+                                                "p".to_string(),
+                                                Box::new(Language::PARENTHESIS.regex()),
+                                            ),
+                                            &Regex::Recd(
+                                                "w".to_string(),
+                                                Box::new(Language::WHITESPACE.regex()),
+                                            ),
                                         ),
                                     ),
                                 ),
                             ),
                         ),
                     ),
-                )))),
+                ),
+            ))),
         }
     }
 }
-
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Token {
@@ -521,7 +532,7 @@ pub enum Token {
     RBracket,
     Id(String),
     FnId(String),
-    Op(Op),
+    Op(Operation),
     Num(i64),
     Keyword(Keyword),
     String(String),
@@ -530,7 +541,7 @@ pub enum Token {
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
-pub enum Op{
+pub enum Operation {
     Assign,
     Unassign,
     NotEqual,
@@ -549,48 +560,71 @@ pub enum Op{
     Power,
 }
 
-impl fmt::Debug for Op {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl fmt::Display for Operation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Op::Assign => write!(f, ":="),
-            Op::Unassign => write!(f, "=:"),
-            Op::NotEqual => write!(f, "!="),
-            Op::Equal => write!(f, "=="),
-            Op::LessThanEqual => write!(f, "<="),
-            Op::GreaterThanEqual => write!(f, ">="),
-            Op::Mod => write!(f, "%"),
-            Op::Or => write!(f, "||"),
-            Op::And => write!(f, "&&"),
-            Op::LessThan => write!(f, "<"),
-            Op::GreaterThan => write!(f, ">"),
-            Op::Plus => write!(f, "+"),
-            Op::Minus => write!(f, "-"),
-            Op::Multiply => write!(f, "*"),
-            Op::Divide => write!(f, "/"),
-            Op::Power => write!(f, "^"),
+            Operation::Assign => write!(f, ":="),
+            Operation::Unassign => write!(f, "=:"),
+            Operation::NotEqual => write!(f, "!="),
+            Operation::Equal => write!(f, "=="),
+            Operation::LessThanEqual => write!(f, "<="),
+            Operation::GreaterThanEqual => write!(f, ">="),
+            Operation::Mod => write!(f, "%"),
+            Operation::Or => write!(f, "||"),
+            Operation::And => write!(f, "&&"),
+            Operation::LessThan => write!(f, "<"),
+            Operation::GreaterThan => write!(f, ">"),
+            Operation::Plus => write!(f, "+"),
+            Operation::Minus => write!(f, "-"),
+            Operation::Multiply => write!(f, "*"),
+            Operation::Divide => write!(f, "/"),
+            Operation::Power => write!(f, "^"),
         }
     }
 }
 
-impl FromStr for Op {
+impl fmt::Debug for Operation {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Operation::Assign => write!(f, ":="),
+            Operation::Unassign => write!(f, "=:"),
+            Operation::NotEqual => write!(f, "!="),
+            Operation::Equal => write!(f, "=="),
+            Operation::LessThanEqual => write!(f, "<="),
+            Operation::GreaterThanEqual => write!(f, ">="),
+            Operation::Mod => write!(f, "%"),
+            Operation::Or => write!(f, "||"),
+            Operation::And => write!(f, "&&"),
+            Operation::LessThan => write!(f, "<"),
+            Operation::GreaterThan => write!(f, ">"),
+            Operation::Plus => write!(f, "+"),
+            Operation::Minus => write!(f, "-"),
+            Operation::Multiply => write!(f, "*"),
+            Operation::Divide => write!(f, "/"),
+            Operation::Power => write!(f, "^"),
+        }
+    }
+}
+
+impl FromStr for Operation {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            ":=" => Ok(Op::Assign),
-            "!=" => Ok(Op::NotEqual),
-            "==" => Ok(Op::Equal),
-            "<=" => Ok(Op::LessThanEqual),
-            ">=" => Ok(Op::GreaterThanEqual),
-            "%" => Ok(Op::Mod),
-            "||" => Ok(Op::Or),
-            "&&" => Ok(Op::And),
-            "<" => Ok(Op::LessThan),
-            ">" => Ok(Op::GreaterThan),
-            "+" => Ok(Op::Plus),
-            "-" => Ok(Op::Minus),
-            "*" => Ok(Op::Multiply),
-            "/" => Ok(Op::Divide),
+            ":=" => Ok(Operation::Assign),
+            "!=" => Ok(Operation::NotEqual),
+            "==" => Ok(Operation::Equal),
+            "<=" => Ok(Operation::LessThanEqual),
+            ">=" => Ok(Operation::GreaterThanEqual),
+            "%" => Ok(Operation::Mod),
+            "||" => Ok(Operation::Or),
+            "&&" => Ok(Operation::And),
+            "<" => Ok(Operation::LessThan),
+            ">" => Ok(Operation::GreaterThan),
+            "+" => Ok(Operation::Plus),
+            "-" => Ok(Operation::Minus),
+            "*" => Ok(Operation::Multiply),
+            "/" => Ok(Operation::Divide),
             _ => Err(()),
         }
     }
@@ -607,7 +641,7 @@ pub enum Keyword {
     False,
     For,
     Call,
-    Fn
+    Fn,
 }
 
 impl FromStr for Keyword {
@@ -658,22 +692,22 @@ fn token(s1: &str, s2: &str) -> Option<Token> {
         ("p", "(") => Some(Token::LBracket),
         ("p", ")") => Some(Token::RBracket),
         ("i", s) => Some(Token::Id(s.to_string())),
-        ("o", s) => Some(Token::Op(Op::from_str(s).unwrap())),
+        ("o", s) => Some(Token::Op(Operation::from_str(s).unwrap())),
         ("n", s) => Some(Token::Num(s.parse().ok().unwrap())),
         ("k", s) => Some(Token::Keyword(Keyword::from_str(s).unwrap())),
         ("str", s) => Some(Token::String(escape(s))),
         ("fn", s) => Some(Token::FnId(s.to_string())),
-        _ => None
+        _ => None,
     }
 }
 
 fn escape(s: &str) -> String {
     let mut escaped = String::new();
     match s {
-        "\"\\n\""=> escaped.push_str("\n"),
+        "\"\\n\"" => escaped.push_str("\n"),
         "\"\\t\"" => escaped.push_str("\t"),
         "\"\\r\"" => escaped.push_str("\r"),
-        _ => escaped.push_str(s)
+        _ => escaped.push_str(s),
     }
     escaped
 }

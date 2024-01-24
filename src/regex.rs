@@ -20,7 +20,7 @@ pub enum Regex {
     Between(Box<Regex>, i32, i32),
     Not(Box<Regex>),
     Cfun(fn(char) -> bool),
-    Recd(String, Box<Regex>)
+    Recd(String, Box<Regex>),
 }
 
 fn charlist2rexp(s: &str) -> Regex {
@@ -28,7 +28,7 @@ fn charlist2rexp(s: &str) -> Regex {
     let mut r = Regex::Char(s.chars().last().unwrap());
     // remove last character from string
     let s = &s[..s.len() - 1];
-    for c in s.chars().rev(){
+    for c in s.chars().rev() {
         r = Regex::Seq(Box::new(Regex::Char(c)), Box::new(r));
     }
     r
@@ -36,14 +36,14 @@ fn charlist2rexp(s: &str) -> Regex {
 
 impl Regex {
     pub fn alt(s1: &str, s2: &str) -> Regex {
-        Regex::Alt(Box::new(charlist2rexp(s1)),Box::new(charlist2rexp(s2)))
+        Regex::Alt(Box::new(charlist2rexp(s1)), Box::new(charlist2rexp(s2)))
     }
     pub fn alt_r(s1: &str, r: &Regex) -> Regex {
-        Regex::Alt(Box::new(charlist2rexp(s1)),Box::new(r.clone()))
+        Regex::Alt(Box::new(charlist2rexp(s1)), Box::new(r.clone()))
     }
 
-    pub fn alt_rs(r1: &Regex,r2: &Regex) -> Regex {
-        Regex::Alt(Box::new(r1.clone()),Box::new(r2.clone()))
+    pub fn alt_rs(r1: &Regex, r2: &Regex) -> Regex {
+        Regex::Alt(Box::new(r1.clone()), Box::new(r2.clone()))
     }
 }
 
@@ -53,7 +53,6 @@ impl FromStr for Regex {
         Ok(charlist2rexp(s))
     }
 }
-
 
 // implement print for debugging
 impl fmt::Debug for Regex {
@@ -81,7 +80,7 @@ impl fmt::Debug for Regex {
             Regex::Between(r, n, m) => write!(f, "({:?}^({}..{}))", r, n, m),
             Regex::Not(r) => write!(f, "!{:?}", r),
             Regex::Cfun(_r) => write!(f, "cfun"),
-            Regex::Recd(x, r) => write!(f,"!{:?}: {}", r, x ),
+            Regex::Recd(x, r) => write!(f, "!{:?}: {}", r, x),
         }
     }
 }
@@ -107,7 +106,6 @@ pub fn nullable(r: &Regex) -> bool {
         Regex::Recd(_, r1) => nullable(&r1),
     }
 }
-
 
 pub fn der(d: &char, r: &Regex) -> Regex {
     match r {
@@ -234,7 +232,7 @@ pub fn simp(r: &Regex) -> Regex {
 pub fn ders(s: &str, r: &Regex) -> Regex {
     match s.chars().next() {
         None => simp(r),
-        Some(c) => ders(&s[1..], &simp(&der(&c, &r)))
+        Some(c) => ders(&s[1..], &simp(&der(&c, &r))),
     }
 }
 
@@ -242,7 +240,7 @@ pub fn matcher(s: &str, r: Regex) -> bool {
     nullable(&ders(s, &r))
 }
 
-pub fn prefix_matcher(s: &str, r: Regex) -> HashSet<(String,String)> {
+pub fn prefix_matcher(s: &str, r: Regex) -> HashSet<(String, String)> {
     let mut result = HashSet::new();
     let mut s = s.to_string();
     let mut remaining = "".to_string();
@@ -256,11 +254,10 @@ pub fn prefix_matcher(s: &str, r: Regex) -> HashSet<(String,String)> {
         remaining = s.pop().unwrap().to_string() + &remaining;
     }
     result
-
 }
 #[cfg(test)]
 mod test {
-    use super::{matcher,prefix_matcher, Regex};
+    use super::{matcher, prefix_matcher, Regex};
 
     #[test]
     fn test_prefix_matcher() {
@@ -283,15 +280,19 @@ mod test {
             "b",
             Regex::Alt(Box::new(Regex::Char('a')), Box::new(Regex::Char('b'))),
         )); // "b" a|b True
-        // test case for between 2 and 2 a's with two plus operators
+            // test case for between 2 and 2 a's with two plus operators
         assert!(matcher(
             "aaaa",
             Regex::Plus(Box::new(Regex::Between(Box::new(Regex::Char('a')), 2, 2))),
         )); // "aaaa" (a{2,2})+ True
         assert!(!matcher(
             "aaaaaaa",
-            Regex::Plus(Box::new(Regex::Plus(Box::new(Regex::Between(Box::new(Regex::Char('a')), 2, 2)))
-            )))); // "aaaaaaa" ((a{2,2})+)+ False
+            Regex::Plus(Box::new(Regex::Plus(Box::new(Regex::Between(
+                Box::new(Regex::Char('a')),
+                2,
+                2
+            )))))
+        )); // "aaaaaaa" ((a{2,2})+)+ False
     }
 
     #[test]
@@ -315,10 +316,31 @@ mod test {
 
     #[test]
     fn and_regex() {
-        assert!(!matcher("a", Regex::And(Box::new(Regex::Char('a')), Box::new(Regex::Char('b'))))); // "a" a&b False
-        assert!(matcher("a", Regex::And(Box::new(Regex::Char('a')), Box::new(Regex::Star(Box::new(Regex::Char('a'))))))); // "a" a&(a*) True
-        assert!(!matcher("aa", Regex::And(Box::new(Regex::Char('a')), Box::new(Regex::Star(Box::new(Regex::Char('b'))))))); // "aa" a&(b*) False
-        assert!(!matcher("aa", Regex::And(Box::new(Regex::Char('a')), Box::new(Regex::Star(Box::new(Regex::Char('a'))))))); // "aa" a&(a*) False
+        assert!(!matcher(
+            "a",
+            Regex::And(Box::new(Regex::Char('a')), Box::new(Regex::Char('b')))
+        )); // "a" a&b False
+        assert!(matcher(
+            "a",
+            Regex::And(
+                Box::new(Regex::Char('a')),
+                Box::new(Regex::Star(Box::new(Regex::Char('a'))))
+            )
+        )); // "a" a&(a*) True
+        assert!(!matcher(
+            "aa",
+            Regex::And(
+                Box::new(Regex::Char('a')),
+                Box::new(Regex::Star(Box::new(Regex::Char('b'))))
+            )
+        )); // "aa" a&(b*) False
+        assert!(!matcher(
+            "aa",
+            Regex::And(
+                Box::new(Regex::Char('a')),
+                Box::new(Regex::Star(Box::new(Regex::Char('a'))))
+            )
+        )); // "aa" a&(a*) False
     }
 
     #[test]
@@ -618,7 +640,7 @@ mod test {
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             r1.clone(),
         )); // True
-        // 131 a's
+            // 131 a's
         assert!(!matcher(
             "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
             r1.clone(),
@@ -640,6 +662,4 @@ mod test {
             r2,
         )); // True
     }
-
 }
-
