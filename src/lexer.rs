@@ -341,6 +341,7 @@ pub enum Language {
     CHARACTERS,
     EndOfLine,
     RIMPRegex,
+    COMMA,
 }
 
 impl Language {
@@ -397,6 +398,7 @@ impl Language {
                 ),
             ),
             Language::SEMI => Char(';'),
+            Language::COMMA => Char(','),
             Language::OP => Regex::alt_r(
                 ":=",
                 &Regex::alt_r(
@@ -491,6 +493,8 @@ impl Language {
                         &Regex::alt_rs(
                             &Regex::Recd("n".to_string(), Box::new(Language::NUM.regex())),
                             &Regex::alt_rs(
+                                &Regex::Recd("co".to_string(), Box::new(Language::COMMA.regex())),
+                            &Regex::alt_rs(
                                 &Regex::Recd("s".to_string(), Box::new(Language::SEMI.regex())),
                                 &Regex::alt_rs(
                                     &Regex::Recd(
@@ -518,7 +522,7 @@ impl Language {
                         ),
                     ),
                 ),
-            ))),
+            )))),
         }
     }
 }
@@ -538,6 +542,7 @@ pub enum Token {
     String(String),
     Comment(String),
     Whitespaces(String),
+    Comma
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -683,6 +688,24 @@ impl fmt::Debug for Keyword {
     }
 }
 
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Keyword::Skip => write!(f, "skip"),
+            Keyword::While => write!(f, "while"),
+            Keyword::Do => write!(f, "do"),
+            Keyword::If => write!(f, "if"),
+            Keyword::Else => write!(f, "else"),
+            Keyword::Then => write!(f, "then"),
+            Keyword::True => write!(f, "true"),
+            Keyword::False => write!(f, "false"),
+            Keyword::For => write!(f, "for"),
+            Keyword::Call => write!(f, "call"),
+            Keyword::Fn => write!(f, "fn"),
+        }
+    }
+}
+
 fn token(s1: &str, s2: &str) -> Option<Token> {
     debug!("s1: {} s2: {}", s1, s2);
     match (s1, s2) {
@@ -697,6 +720,7 @@ fn token(s1: &str, s2: &str) -> Option<Token> {
         ("k", s) => Some(Token::Keyword(Keyword::from_str(s).unwrap())),
         ("str", s) => Some(Token::String(escape(s))),
         ("fn", s) => Some(Token::FnId(s.to_string())),
+        ("co", ",") => Some(Token::Comma),
         _ => None,
     }
 }
