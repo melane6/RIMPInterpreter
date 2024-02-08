@@ -1,0 +1,12 @@
+n := 4
+Fact := 1
+
+while n > 0 do {
+    fact := fact * n;
+    n := n - 1
+}
+
+fn fact(n)  {
+    x := n + 1;
+    return x
+}

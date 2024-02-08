@@ -4,6 +4,8 @@ mod lexer;
 mod parser;
 mod regex;
 mod utils;
+mod error_handler;
+mod transformations;
 
 use crate::utils::init_logging;
 use wasm_bindgen::prelude::*;

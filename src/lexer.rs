@@ -342,6 +342,8 @@ pub enum Language {
     EndOfLine,
     RIMPRegex,
     COMMA,
+    CAPITAL,
+    GlobalID,
 }
 
 impl Language {
@@ -355,6 +357,7 @@ impl Language {
             ),
             Language::DIGIT => Range(('0'..='9').collect()),
             Language::LETTERS => Range(('a'..='z').chain('A'..='Z').collect()),
+            Language::CAPITAL => Range(('A'..='Z').collect()),
             Language::ID => Regex::Seq(
                 Box::new(Language::LETTERS.regex()),
                 Box::new(Regex::Star(Box::new(Regex::alt_rs(
@@ -381,13 +384,13 @@ impl Language {
                                 "else",
                                 &Regex::alt_r(
                                     "then",
-                                    &Regex::alt_r(
-                                        "call",
                                         &Regex::alt_r(
-                                            "true",
+                                            "fn",
                                             &Regex::alt_r(
-                                                "false",
-                                                &Regex::alt_r("for", &Regex::alt("do", "uncall")),
+                                                "true",
+                                                &Regex::alt_r(
+                                                    "false",
+                                                    &Regex::alt_r("for", &Regex::alt("do", "return")),
                                             ),
                                         ),
                                     ),
@@ -432,6 +435,13 @@ impl Language {
                         ),
                     ),
                 ),
+            ),
+            Language::GlobalID => Regex::Seq(
+                Box::new(Language::CAPITAL.regex()),
+                Box::new(Regex::Star(Box::new(Regex::alt_rs(
+                    &Language::LETTERS.regex(),
+                    &Language::DIGIT.regex(),
+                )))),
             ),
             Language::WHITESPACE => Regex::alt_rs(
                 &Regex::Plus(Box::new(Char(' '))),
@@ -494,26 +504,29 @@ impl Language {
                             &Regex::Recd("n".to_string(), Box::new(Language::NUM.regex())),
                             &Regex::alt_rs(
                                 &Regex::Recd("co".to_string(), Box::new(Language::COMMA.regex())),
-                            &Regex::alt_rs(
-                                &Regex::Recd("s".to_string(), Box::new(Language::SEMI.regex())),
                                 &Regex::alt_rs(
-                                    &Regex::Recd(
-                                        "c".to_string(),
-                                        Box::new(Language::COMMENTS.regex()),
-                                    ),
+                                    &Regex::Recd("gi".to_string(), Box::new(Language::GlobalID.regex())),
+                                &Regex::alt_rs(
+                                    &Regex::Recd("s".to_string(), Box::new(Language::SEMI.regex())),
                                     &Regex::alt_rs(
                                         &Regex::Recd(
-                                            "str".to_string(),
-                                            Box::new(Language::STRING.regex()),
+                                            "c".to_string(),
+                                            Box::new(Language::COMMENTS.regex()),
                                         ),
                                         &Regex::alt_rs(
                                             &Regex::Recd(
-                                                "p".to_string(),
-                                                Box::new(Language::PARENTHESIS.regex()),
+                                                "str".to_string(),
+                                                Box::new(Language::STRING.regex()),
                                             ),
-                                            &Regex::Recd(
-                                                "w".to_string(),
-                                                Box::new(Language::WHITESPACE.regex()),
+                                            &Regex::alt_rs(
+                                                &Regex::Recd(
+                                                    "p".to_string(),
+                                                    Box::new(Language::PARENTHESIS.regex()),
+                                                ),
+                                                &Regex::Recd(
+                                                    "w".to_string(),
+                                                    Box::new(Language::WHITESPACE.regex()),
+                                                ),
                                             ),
                                         ),
                                     ),
@@ -521,8 +534,7 @@ impl Language {
                             ),
                         ),
                     ),
-                ),
-            )))),
+                ))))),
         }
     }
 }
@@ -535,6 +547,7 @@ pub enum Token {
     LBracket,
     RBracket,
     Id(String),
+    GlobalId(String),
     FnId(String),
     Op(Operation),
     Num(i64),
@@ -542,7 +555,7 @@ pub enum Token {
     String(String),
     Comment(String),
     Whitespaces(String),
-    Comma
+    Comma,
 }
 
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -634,6 +647,7 @@ impl FromStr for Operation {
         }
     }
 }
+
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Keyword {
     Skip,
@@ -646,7 +660,8 @@ pub enum Keyword {
     False,
     For,
     Call,
-    Fn,
+    Def,
+    Return,
 }
 
 impl FromStr for Keyword {
@@ -664,7 +679,8 @@ impl FromStr for Keyword {
             "false" => Ok(Keyword::False),
             "for" => Ok(Keyword::For),
             "call" => Ok(Keyword::Call),
-            "fn" => Ok(Keyword::Fn),
+            "def" => Ok(Keyword::Def),
+            "return" => Ok(Keyword::Return),
             _ => Err(()),
         }
     }
@@ -683,7 +699,8 @@ impl fmt::Debug for Keyword {
             Keyword::False => write!(f, "false"),
             Keyword::For => write!(f, "for"),
             Keyword::Call => write!(f, "call"),
-            Keyword::Fn => write!(f, "fn"),
+            Keyword::Def => write!(f, "def"),
+            Keyword::Return => write!(f, "return"),
         }
     }
 }
@@ -701,7 +718,8 @@ impl fmt::Display for Keyword {
             Keyword::False => write!(f, "false"),
             Keyword::For => write!(f, "for"),
             Keyword::Call => write!(f, "call"),
-            Keyword::Fn => write!(f, "fn"),
+            Keyword::Def => write!(f, "def"),
+            Keyword::Return => write!(f, "return"),
         }
     }
 }
@@ -721,6 +739,7 @@ fn token(s1: &str, s2: &str) -> Option<Token> {
         ("str", s) => Some(Token::String(escape(s))),
         ("fn", s) => Some(Token::FnId(s.to_string())),
         ("co", ",") => Some(Token::Comma),
+        ("gi", s) => Some(Token::GlobalId(s.to_string())),
         _ => None,
     }
 }
@@ -752,4 +771,11 @@ pub(crate) fn tokenise(s: &str) -> Vec<Token> {
         }
     }
     tokens
+}
+
+#[test]
+fn test_lexing() {
+    let file = std::fs::read_to_string("programs/fib.rimp").unwrap();
+    let tokens = tokenise(file.as_str());
+    println!("tokens: {:?}", tokens)
 }
