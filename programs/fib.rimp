@@ -6,7 +6,24 @@ while n > 0 do {
     n := n - 1
 }
 
-fn fact(n)  {
+def fact(n)  {
     x := n + 1;
     return x
+}
+
+
+// tail-recursive fact
+def fact_tr(n, acc) {
+    if n == 0 then return acc
+    else  return fact_tr(n - 1, n * acc)
+}
+
+
+// tail-recursion fib
+def fib_tr(n, a, b){
+    if n == 0  then return a
+    else {
+        if n == 1 then return b
+        else fib_tr(n -1, b, a + b )
+    }
 }

@@ -1,11 +1,12 @@
 mod debugger;
+mod error_handler;
 mod evaluator;
 mod lexer;
 mod parser;
 mod regex;
-mod utils;
-mod error_handler;
 mod transformations;
+mod utils;
+mod inverter;
 
 use crate::utils::init_logging;
 use wasm_bindgen::prelude::*;

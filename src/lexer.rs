@@ -384,13 +384,13 @@ impl Language {
                                 "else",
                                 &Regex::alt_r(
                                     "then",
+                                    &Regex::alt_r(
+                                        "fn",
                                         &Regex::alt_r(
-                                            "fn",
+                                            "true",
                                             &Regex::alt_r(
-                                                "true",
-                                                &Regex::alt_r(
-                                                    "false",
-                                                    &Regex::alt_r("for", &Regex::alt("do", "return")),
+                                                "false",
+                                                &Regex::alt_r("for", &Regex::alt("do", "return")),
                                             ),
                                         ),
                                     ),
@@ -505,27 +505,34 @@ impl Language {
                             &Regex::alt_rs(
                                 &Regex::Recd("co".to_string(), Box::new(Language::COMMA.regex())),
                                 &Regex::alt_rs(
-                                    &Regex::Recd("gi".to_string(), Box::new(Language::GlobalID.regex())),
-                                &Regex::alt_rs(
-                                    &Regex::Recd("s".to_string(), Box::new(Language::SEMI.regex())),
+                                    &Regex::Recd(
+                                        "gi".to_string(),
+                                        Box::new(Language::GlobalID.regex()),
+                                    ),
                                     &Regex::alt_rs(
                                         &Regex::Recd(
-                                            "c".to_string(),
-                                            Box::new(Language::COMMENTS.regex()),
+                                            "s".to_string(),
+                                            Box::new(Language::SEMI.regex()),
                                         ),
                                         &Regex::alt_rs(
                                             &Regex::Recd(
-                                                "str".to_string(),
-                                                Box::new(Language::STRING.regex()),
+                                                "c".to_string(),
+                                                Box::new(Language::COMMENTS.regex()),
                                             ),
                                             &Regex::alt_rs(
                                                 &Regex::Recd(
-                                                    "p".to_string(),
-                                                    Box::new(Language::PARENTHESIS.regex()),
+                                                    "str".to_string(),
+                                                    Box::new(Language::STRING.regex()),
                                                 ),
-                                                &Regex::Recd(
-                                                    "w".to_string(),
-                                                    Box::new(Language::WHITESPACE.regex()),
+                                                &Regex::alt_rs(
+                                                    &Regex::Recd(
+                                                        "p".to_string(),
+                                                        Box::new(Language::PARENTHESIS.regex()),
+                                                    ),
+                                                    &Regex::Recd(
+                                                        "w".to_string(),
+                                                        Box::new(Language::WHITESPACE.regex()),
+                                                    ),
                                                 ),
                                             ),
                                         ),
@@ -534,7 +541,8 @@ impl Language {
                             ),
                         ),
                     ),
-                ))))),
+                ),
+            ))),
         }
     }
 }

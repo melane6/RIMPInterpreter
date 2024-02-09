@@ -16,10 +16,10 @@ pub enum ParseErrorMessage {
     Errors(Box<ParseErrorMessage>, Box<ParseErrorMessage>),
 }
 
-pub type ParseError = (ParseErrorMessage, i64);
+pub type ParseError = (ParseErrorMessage, usize);
 pub type Block = Vec<Stmt>;
 
-pub type FnArgs = Vec<String>;
+pub type FnArgs = Vec<ArithmeticExpr>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RIMPProgram {
@@ -36,7 +36,7 @@ pub enum Stmt {
     Skip,
     Assign(String, ArithmeticExpr),
     Unassign(String, ArithmeticExpr),
-    If(BooleanExpr, ArithmeticExpr, ArithmeticExpr),
+    If(BooleanExpr, Block, Block),
     While(BooleanExpr, Block),
     Function(String, FnArgs, Block), // function name, arguments, body
 }
@@ -44,7 +44,8 @@ pub enum Stmt {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArithmeticExpr {
     Num(i64),
-    Var(String),
+    LocalID(String),
+    GlobalID(String),
     Aop(String, Box<ArithmeticExpr>, Box<ArithmeticExpr>),
     Call(String, Vec<ArithmeticExpr>),
 }
@@ -78,7 +79,7 @@ impl<T> IsSeq<T> for Vec<T> {
 
 type ParserResult<T, I> = HashSet<(T, I)>;
 
-type ParseResult<T, I> = Result<HashSet<(T, I)>, ParseErrorMessage>;
+pub(crate) type ParseResult<T, I> = Result<HashSet<(T, I)>, ParseError>;
 
 fn parse_all<I, T>(parsed: ParserResult<T, Vec<I>>) -> HashSet<T>
 where
@@ -116,10 +117,7 @@ where
             }
             (Ok(left), Err(_)) => Ok(left),
             (Err(_), Ok(right)) => Ok(right),
-            (Err(left_error), Err(right_error)) => Err(ParseErrorMessage::Errors(
-                Box::new(left_error),
-                Box::new(right_error),
-            )),
+            (Err(left_error), Err(right_error)) => Err(left_error),
         }
     }
 }
@@ -140,6 +138,8 @@ where
         let left_result = left_parser(ts.clone());
         match left_result {
             Ok(left) => {
+                let mut no_match = false;
+                let mut error = (ParseErrorMessage::SyntaxError("".to_string()), 0);
                 for (head, tail) in left {
                     let right_result = right_parser(tail);
                     match right_result {
@@ -148,14 +148,24 @@ where
                                 result.insert(((head.clone(), head2.clone()), tail2.clone()));
                             }
                         }
-                        Err(_) => {},
+                        Err(e) => {
+                            no_match = true;
+                            error = e;
+                        }
                     }
                 }
-                Ok(result)
+                if result.is_empty() && no_match { Err(error) } else { Ok(result) }
             }
             Err(e) => Err(e),
         }
     }
+}
+
+#[test]
+fn seq_test() {
+    let tokens = vec![Token::Num(1), Token::Op(Operation::Plus),Token::Num(1)];
+    let result = seq(number_parser(), seq(op_parser(), number_parser()))(tokens);
+    println!("{:?}", result);
 }
 
 fn map<'a, I, T, S, P, F>(parser: P, f: F) -> impl Fn(I) -> ParseResult<S, I>
@@ -208,7 +218,6 @@ impl Parser {
     }
 }
 
-
 fn id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
     move |ts: Vec<Token>| {
         let mut result = HashSet::new();
@@ -218,12 +227,12 @@ fn id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
                     result.insert((x.clone(), ts[1..].to_vec()));
                     Ok(result)
                 }
-                _ => Err(ParseErrorMessage::ExpectedToken(Token::Id(
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::Id(
                     "Some variable id".parse().unwrap(),
-                ))),
+                )), ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -244,12 +253,12 @@ fn function_id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<
                     result.insert((x.clone(), ts[1..].to_vec()));
                     Ok(result)
                 }
-                _ => Err(ParseErrorMessage::ExpectedToken(Token::Id(
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::Id(
                     "Some function id".parse().unwrap(),
-                ))),
+                )), ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -270,10 +279,10 @@ fn number_parser() -> impl Fn(Vec<Token>) -> ParseResult<i64, Vec<Token>> {
                     result.insert((x.clone(), ts[1..].to_vec()));
                     Ok(result)
                 }
-                _ => Err(ParseErrorMessage::ExpectedToken(Token::Num(0))),
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::Num(0)), ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -294,7 +303,7 @@ fn parenthesis(s: String) -> impl Fn(Vec<Token>) -> ParseResult<Token, Vec<Token
                     result.insert((Token::LBracket, ts[1..].to_vec()));
                     Ok(result)
                 } else {
-                    Err(ParseErrorMessage::ExpectedToken(Token::LBracket))
+                    Err((ParseErrorMessage::ExpectedToken(Token::LBracket), ts.len()))
                 }
             }
             ")" => {
@@ -302,7 +311,7 @@ fn parenthesis(s: String) -> impl Fn(Vec<Token>) -> ParseResult<Token, Vec<Token
                     result.insert((Token::RBracket, ts[1..].to_vec()));
                     Ok(result)
                 } else {
-                    Err(ParseErrorMessage::ExpectedToken(Token::RBracket))
+                    Err((ParseErrorMessage::ExpectedToken(Token::RBracket), ts.len()))
                 }
             }
             "{" => {
@@ -310,7 +319,7 @@ fn parenthesis(s: String) -> impl Fn(Vec<Token>) -> ParseResult<Token, Vec<Token
                     result.insert((Token::LParent, ts[1..].to_vec()));
                     Ok(result)
                 } else {
-                    Err(ParseErrorMessage::ExpectedToken(Token::LParent))
+                    Err((ParseErrorMessage::ExpectedToken(Token::LParent), ts.len()))
                 }
             }
             "}" => {
@@ -318,7 +327,7 @@ fn parenthesis(s: String) -> impl Fn(Vec<Token>) -> ParseResult<Token, Vec<Token
                     result.insert((Token::RParent, ts[1..].to_vec()));
                     Ok(result)
                 } else {
-                    Err(ParseErrorMessage::ExpectedToken(Token::RBracket))
+                    Err((ParseErrorMessage::ExpectedToken(Token::RParent), ts.len()))
                 }
             }
             _ => panic!("Invalid parenthesis passed in to match token"),
@@ -350,10 +359,10 @@ fn comma_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
                 result.insert((",".to_string(), ts[1..].to_vec()));
                 Ok(result)
             } else {
-                Err(ParseErrorMessage::ExpectedToken(Token::Comma))
+                Err((ParseErrorMessage::ExpectedToken(Token::Comma), ts.len()))
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -366,10 +375,10 @@ fn semi_colon_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>>
                 result.insert((";".to_string(), ts[1..].to_vec()));
                 Ok(result)
             } else {
-                Err(ParseErrorMessage::ExpectedToken(Token::Semi))
+                Err((ParseErrorMessage::ExpectedToken(Token::Semi), ts.len()))
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -384,12 +393,12 @@ fn op_parser() -> impl Fn(Vec<Token>) -> ParseResult<Operation, Vec<Token>> {
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     }
-                    _ => Err(ParseErrorMessage::ExpectedOperation),
+                    _ => Err((ParseErrorMessage::ExpectedOperation, ts.len())),
                 },
-                _ => Err(ParseErrorMessage::ExpectedOperation),
+                _ => Err((ParseErrorMessage::ExpectedOperation, ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -404,12 +413,12 @@ fn prior_op_parser() -> impl Fn(Vec<Token>) -> ParseResult<Operation, Vec<Token>
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     }
-                    _ => Err(ParseErrorMessage::ExpectedOperation),
+                    _ => Err((ParseErrorMessage::ExpectedOperation, ts.len())),
                 },
-                _ => Err(ParseErrorMessage::ExpectedOperation),
+                _ => Err((ParseErrorMessage::ExpectedOperation, ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -436,12 +445,12 @@ fn bop_parser() -> impl Fn(Vec<Token>) -> ParseResult<Operation, Vec<Token>> {
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     }
-                    _ => Err(ParseErrorMessage::ExpectedBoolOperation),
+                    _ => Err((ParseErrorMessage::ExpectedBoolOperation, ts.len())),
                 },
-                _ => Err(ParseErrorMessage::ExpectedBoolOperation),
+                _ => Err((ParseErrorMessage::ExpectedBoolOperation, ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -463,12 +472,12 @@ fn lop_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<Operation, Vec<Token
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     }
-                    _ => Err(ParseErrorMessage::ExpectedBoolOperation),
+                    _ => Err((ParseErrorMessage::ExpectedBoolOperation, ts.len())),
                 },
-                _ => Err(ParseErrorMessage::ExpectedBoolOperation),
+                _ => Err((ParseErrorMessage::ExpectedBoolOperation, ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -490,17 +499,17 @@ fn symbol_parser(s: String) -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<To
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     } else {
-                        Err(ParseErrorMessage::ExpectedToken(Token::String(
+                        Err((ParseErrorMessage::ExpectedToken(Token::String(
                             "Expected some symbol".to_string(),
-                        )))
+                        )), ts.len()))
                     }
                 }
-                _ => Err(ParseErrorMessage::ExpectedToken(Token::String(
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::String(
                     "Expected some symbol".to_string(),
-                ))),
+                )), ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -522,17 +531,17 @@ fn keyword_parser(s: String) -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<T
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     } else {
-                        Err(ParseErrorMessage::ExpectedToken(Token::Keyword(
+                        Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
                             Keyword::from_str(s.as_str()).unwrap(),
-                        )))
+                        )), ts.len()))
                     }
                 }
-                _ => Err(ParseErrorMessage::ExpectedToken(Token::Keyword(
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
                     Keyword::from_str(s.as_str()).unwrap(),
-                ))),
+                )), ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -554,16 +563,16 @@ fn skip_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                         result.insert((Stmt::Skip, ts[1..].to_vec()));
                         Ok(result)
                     }
-                    _ => Err(ParseErrorMessage::ExpectedToken(Token::Keyword(
+                    _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
                         Keyword::Skip,
-                    ))),
+                    )), ts.len())),
                 },
-                _ => Err(ParseErrorMessage::ExpectedToken(Token::Keyword(
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
                     Keyword::Skip,
-                ))),
+                )), ts.len())),
             }
         } else {
-            Err(ParseErrorMessage::EOF)
+            Err((ParseErrorMessage::EOF, ts.len()))
         }
     }
 }
@@ -610,30 +619,34 @@ fn call() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
     move |ts| {
         map(
             seq(
-                function_id_token_parser(),
-                seq(
-                    parenthesis("(".to_string()),
-                    map(
-                        alt(
-                            map(
-                                seq(params(), parenthesis(")".to_string())),
-                                |(params, _)| params,
-                            ),
-                            map(parenthesis(")".to_string()), |_| vec![]),
-                        ),
-                        |params| params,
-                    ),
+                id_token_parser(),
+                map(
+                    seq(parenthesis("(".to_string()), seq(params(), parenthesis(")".to_string()))),
+                    |(_, (params, _))| params,
                 ),
             ),
-            |(id, (_, args))| ArithmeticExpr::Call(id, args),
+            |(id, params)| ArithmeticExpr::Call(id, params),
         )(ts)
     }
+}
+
+#[test]
+fn call_test() {
+    let tokens = vec![
+        Token::Id("x".to_string()),
+        Token::LBracket,
+        Token::Num(1),
+        Token::Comma,
+        Token::Num(1),
+        Token::RBracket,
+    ];
+    let result = call()(tokens);
+    println!("{:?}", result);
 }
 
 fn params() -> impl Fn(Vec<Token>) -> ParseResult<Vec<ArithmeticExpr>, Vec<Token>> {
     move |ts| {
         alt(
-            map(arithmetic_expr(), |param| vec![param]),
             map(
                 seq(arithmetic_expr(), seq(comma_parser(), params())),
                 |(param, (_, mut params))| {
@@ -641,8 +654,18 @@ fn params() -> impl Fn(Vec<Token>) -> ParseResult<Vec<ArithmeticExpr>, Vec<Token
                     params
                 },
             ),
+            map(arithmetic_expr(), |param| vec![param]),
         )(ts)
     }
+}
+
+
+
+#[test]
+fn params_test() {
+    let tokens = vec![Token::Id("x".to_string()), Token::Comma, Token::Id("y".to_string())];
+    let result = params()(tokens);
+    println!("{:?}", result);
 }
 
 fn factor() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
@@ -652,7 +675,7 @@ fn factor() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
             call(),
             alt(
                 map(number_parser(), |num| ArithmeticExpr::Num(num)),
-                map(id_token_parser(), |id| ArithmeticExpr::Var(id)),
+                map(id_token_parser(), |id| ArithmeticExpr::LocalID(id)),
             ),
         )(ts)
     }
@@ -674,6 +697,17 @@ fn boolean_expr() -> impl Fn(Vec<Token>) -> ParseResult<BooleanExpr, Vec<Token>>
             ),
         )(ts)
     }
+}
+
+#[test]
+fn boolean_expr_test() {
+    let tokens = vec![
+        Token::Num(1),
+        Token::Op(Operation::NotEqual),
+        Token::Num(1),
+    ];
+    let result = boolean_expr()(tokens);
+    println!("{:?}", result);
 }
 
 fn element() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
@@ -700,10 +734,7 @@ fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                     boolean_expr(),
                     seq(
                         keyword_parser("then".to_string()),
-                        seq(
-                            arithmetic_expr(),
-                            seq(keyword_parser("else".to_string()), arithmetic_expr()),
-                        ),
+                        seq(block(), seq(keyword_parser("else".to_string()), block())),
                     ),
                 ),
             ),
@@ -712,6 +743,200 @@ fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     }
 }
 
-fn transform_fn() -> impl Fn(Vec<Token>) -> ParseResult<Token, Vec<Token>> {
-
+#[test]
+fn if_parser_test() {
+    let tokens = vec![
+        Token::Keyword(Keyword::If),
+        Token::Num(1),
+        Token::Op(Operation::NotEqual),
+        Token::Num(1),
+        Token::Keyword(Keyword::Then),
+        Token::Keyword(Keyword::Skip),
+        Token::Keyword(Keyword::Else),
+        Token::Keyword(Keyword::Skip),
+    ];
+    let result = if_parser()(tokens);
+    println!("{:?}", result);
 }
+
+fn while_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
+    move |ts| {
+        map(
+            seq(
+                keyword_parser("while".to_string()),
+                seq(
+                    boolean_expr(),
+                    seq(keyword_parser("do".to_string()),
+                        seq(
+                            parenthesis("{".to_string()),
+                            seq(
+                                block(), parenthesis("}".to_string())
+                            )
+                        ),
+                    ),
+                ),
+            ),
+            |(_, (b, (_, (_, (block, _ )))))| Stmt::While(b, block),
+        )(ts)
+    }
+}
+
+#[test]
+fn while_parser_test() {
+    let tokens = vec![
+        Token::Keyword(Keyword::While),
+        Token::Num(1),
+        Token::Op(Operation::NotEqual),
+        Token::Num(1),
+        Token::Keyword(Keyword::Do),
+        Token::LParent,
+        Token::Keyword(Keyword::Skip),
+        Token::Semi,
+        Token::Keyword(Keyword::Skip),
+        Token::RParent,
+
+    ];
+    let result = while_parser()(tokens);
+    println!("{:?}", result);
+}
+
+fn block() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
+    move |ts| {
+        alt(
+            map(
+                seq(stmt(), seq(semi_colon_parser(), block())),
+                |(stmt, (_, mut block))| {
+                    block.insert(0, stmt);
+                    block
+                },
+            ),
+            map(stmt(), |stmt| vec![stmt]),
+        )(ts)
+    }
+}
+
+#[test]
+fn block_test() {
+    let tokens = vec![
+        Token::Keyword(Keyword::Skip),
+        Token::Semi,
+        Token::Keyword(Keyword::Skip),
+    ];
+    let result = block()(tokens);
+    println!("{:?}", result);
+}
+
+fn stmt() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
+    move |ts| {
+        alt(
+            skip_parser(),
+            alt(
+                if_parser(),
+                alt(
+                    while_parser(),
+                    alt(
+                        map(
+                            seq(
+                                id_token_parser(),
+                                seq(symbol_parser(":=".to_string()), arithmetic_expr()),
+                            ),
+                            |(id, (_, a))| Stmt::Assign(id, a),
+                        ),
+                        map(
+                            seq(
+                                id_token_parser(),
+                                seq(symbol_parser("!=".to_string()), arithmetic_expr()),
+                            ),
+                            |(id, (_, a))| Stmt::Unassign(id, a),
+                        ),
+                    ),
+                ),
+            ),
+        )(ts)
+    }
+}
+
+fn function_id() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
+    move |vec| {
+        let mut result = HashSet::new();
+        if vec.first().is_some() {
+            match vec.first().unwrap() {
+                Token::Keyword(keyword) => match keyword {
+                    Keyword::Def => match id_token_parser()(vec[1..].to_vec()) {
+                        Ok(parsed) => {
+                            result.insert((
+                                parsed.iter().next().unwrap().0.clone(),
+                                vec[2..].to_vec(),
+                            ));
+                            Ok(result)
+                        }
+                        Err(e) => Err(e),
+                    },
+                    _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
+                        Keyword::Def,
+                    )), vec.len())),
+                },
+                _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
+                    Keyword::from_str("Expected keyword fn").unwrap(),
+                )), vec.len())),
+            }
+        } else {
+            Err((ParseErrorMessage::EOF, vec.len()))
+        }
+    }
+}
+
+#[test]
+fn function_id_test() {
+    let tokens = vec![
+        Token::Keyword(Keyword::Def),
+        Token::FnId("main".to_string()),
+    ];
+    let result = function_id()(tokens);
+    println!("{:?}", result);
+}
+
+// Function parser is a parser that parses a function
+// definition in the form of:
+// fn <function_id>(<params>) { <block> }
+fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
+    move |ts| {
+        map(
+            seq(
+               function_id(),
+                seq(
+                    map(
+                        seq(parenthesis("(".to_string()), seq(params(), parenthesis(")".to_string()))),
+                        |(_, (params, _))| params,
+                    ),
+                    seq(
+                        parenthesis("{".to_string()),
+                        seq(block(), parenthesis("}".to_string())),
+                    ),
+                ),
+            ),
+            |(id,(args, (_, (block, _))))| Stmt::Function(id.to_string(), args, block),
+        )(ts)
+    }
+}
+
+#[test]
+fn function_parser_test() {
+    let tokens = vec![
+        Token::Keyword(Keyword::Def),
+        Token::Id("main".to_string()),
+        Token::LBracket,
+        Token::Id("x".to_string()),
+        Token::Comma,
+        Token::Id("y".to_string()),
+        Token::RBracket,
+        Token::LParent,
+        Token::Keyword(Keyword::Skip),
+        Token::Semi,
+        Token::Keyword(Keyword::Skip),
+        Token::RParent,
+    ];
+    let result = function_parser()(tokens);
+    println!("{:?}", result);
+}
+
