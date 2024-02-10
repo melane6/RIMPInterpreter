@@ -1,8 +1,10 @@
-use crate::lexer::{Keyword, Operation, Token};
+use crate::lexer::{Keyword, Operation, Token, tokenise};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::fs;
 use std::hash::Hash;
 use std::str::FromStr;
+use crate::parser::ParseErrorMessage::Errors;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ParseErrorMessage {
@@ -14,21 +16,27 @@ pub enum ParseErrorMessage {
     ExpectedBoolOperation,
     EOF,
     Errors(Box<ParseErrorMessage>, Box<ParseErrorMessage>),
+    MalformedProgram, //  The program must contain at least one statement or a block (i.e. a sequence of statements) or missed semicolon
+    MalformedFunctionDefinition,
+    MalformedBlock,
+    MalformedIfStatement,
+    MalformedWhileStatement,
+    MalformedAssignment,
+    MalformedFunctionCall,
+    MalformedBooleanExpression,
+    MalformedArithmeticExpression,
+    MalformedArgumentList,
+    NotAValidStatement,
 }
 
 pub type ParseError = (ParseErrorMessage, usize);
 pub type Block = Vec<Stmt>;
 
-pub type FnArgs = Vec<ArithmeticExpr>;
+pub type FnArgs = Vec<String>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RIMPProgram {
-    Program(Stmts),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Stmts {
-    Statements(Stmt, Box<Stmts>),
+    Program(Block),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -38,6 +46,7 @@ pub enum Stmt {
     Unassign(String, ArithmeticExpr),
     If(BooleanExpr, Block, Block),
     While(BooleanExpr, Block),
+    WhileAcc(BooleanExpr, Block, String),
     Function(String, FnArgs, Block), // function name, arguments, body
 }
 
@@ -80,6 +89,7 @@ impl<T> IsSeq<T> for Vec<T> {
 type ParserResult<T, I> = HashSet<(T, I)>;
 
 pub(crate) type ParseResult<T, I> = Result<HashSet<(T, I)>, ParseError>;
+pub(crate) type ParseFinalResult<T> = Result<HashSet<(T)>, ParseError>;
 
 fn parse_all<I, T>(parsed: ParserResult<T, Vec<I>>) -> HashSet<T>
 where
@@ -89,7 +99,8 @@ where
     let mut result = HashSet::new();
     for (head, tail) in parsed {
         if tail.is_empty() {
-            result.insert(head);
+            result.insert(head.clone());
+            println!("{:?}", head);
         }
     }
     result
@@ -154,7 +165,11 @@ where
                         }
                     }
                 }
-                if result.is_empty() && no_match { Err(error) } else { Ok(result) }
+                if result.is_empty() && no_match {
+                    Err(error)
+                } else {
+                    Ok(result)
+                }
             }
             Err(e) => Err(e),
         }
@@ -163,7 +178,7 @@ where
 
 #[test]
 fn seq_test() {
-    let tokens = vec![Token::Num(1), Token::Op(Operation::Plus),Token::Num(1)];
+    let tokens = vec![Token::Num(1), Token::Op(Operation::Plus), Token::Num(1)];
     let result = seq(number_parser(), seq(op_parser(), number_parser()))(tokens);
     println!("{:?}", result);
 }
@@ -190,6 +205,7 @@ where
         }
     }
 }
+
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Parser {
@@ -227,9 +243,12 @@ fn id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
                     result.insert((x.clone(), ts[1..].to_vec()));
                     Ok(result)
                 }
-                _ => Err((ParseErrorMessage::ExpectedToken(Token::Id(
-                    "Some variable id".parse().unwrap(),
-                )), ts.len())),
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::Id(
+                        "Some variable id".parse().unwrap(),
+                    )),
+                    ts.len(),
+                )),
             }
         } else {
             Err((ParseErrorMessage::EOF, ts.len()))
@@ -244,6 +263,28 @@ fn id_token_parser_test() {
     println!("{:?}", result);
 }
 
+fn global_id_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
+    move |ts: Vec<Token>| {
+        let mut result = HashSet::new();
+        if ts.clone().first().is_some() {
+            match ts.first().clone().unwrap() {
+                Token::GlobalId(x) => {
+                    result.insert((x.clone(), ts[1..].to_vec()));
+                    Ok(result)
+                }
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::GlobalId(
+                        "Some global variable".parse().unwrap(),
+                    )),
+                    ts.len(),
+                )),
+            }
+        } else {
+            Err((ParseErrorMessage::EOF, ts.len()))
+        }
+    }
+}
+
 fn function_id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
     move |ts: Vec<Token>| {
         let mut result = HashSet::new();
@@ -253,9 +294,12 @@ fn function_id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<
                     result.insert((x.clone(), ts[1..].to_vec()));
                     Ok(result)
                 }
-                _ => Err((ParseErrorMessage::ExpectedToken(Token::Id(
-                    "Some function id".parse().unwrap(),
-                )), ts.len())),
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::Id(
+                        "Some function id".parse().unwrap(),
+                    )),
+                    ts.len(),
+                )),
             }
         } else {
             Err((ParseErrorMessage::EOF, ts.len()))
@@ -499,14 +543,20 @@ fn symbol_parser(s: String) -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<To
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     } else {
-                        Err((ParseErrorMessage::ExpectedToken(Token::String(
-                            "Expected some symbol".to_string(),
-                        )), ts.len()))
+                        Err((
+                            ParseErrorMessage::ExpectedToken(Token::String(
+                                "Expected some symbol".to_string(),
+                            )),
+                            ts.len(),
+                        ))
                     }
                 }
-                _ => Err((ParseErrorMessage::ExpectedToken(Token::String(
-                    "Expected some symbol".to_string(),
-                )), ts.len())),
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::String(
+                        "Expected some symbol".to_string(),
+                    )),
+                    ts.len(),
+                )),
             }
         } else {
             Err((ParseErrorMessage::EOF, ts.len()))
@@ -531,14 +581,20 @@ fn keyword_parser(s: String) -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<T
                         result.insert((s.clone(), ts[1..].to_vec()));
                         Ok(result)
                     } else {
-                        Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
-                            Keyword::from_str(s.as_str()).unwrap(),
-                        )), ts.len()))
+                        Err((
+                            ParseErrorMessage::ExpectedToken(Token::Keyword(
+                                Keyword::from_str(s.as_str()).unwrap(),
+                            )),
+                            ts.len(),
+                        ))
                     }
                 }
-                _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
-                    Keyword::from_str(s.as_str()).unwrap(),
-                )), ts.len())),
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::Keyword(
+                        Keyword::from_str(s.as_str()).unwrap(),
+                    )),
+                    ts.len(),
+                )),
             }
         } else {
             Err((ParseErrorMessage::EOF, ts.len()))
@@ -563,13 +619,15 @@ fn skip_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                         result.insert((Stmt::Skip, ts[1..].to_vec()));
                         Ok(result)
                     }
-                    _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
-                        Keyword::Skip,
-                    )), ts.len())),
+                    _ => Err((
+                        ParseErrorMessage::ExpectedToken(Token::Keyword(Keyword::Skip)),
+                        ts.len(),
+                    )),
                 },
-                _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
-                    Keyword::Skip,
-                )), ts.len())),
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::Keyword(Keyword::Skip)),
+                    ts.len(),
+                )),
             }
         } else {
             Err((ParseErrorMessage::EOF, ts.len()))
@@ -586,13 +644,16 @@ fn skip_test() {
 
 fn arithmetic_expr() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
     move |ts| {
-        alt(
+        match alt(
             map(
                 seq(term(), seq(op_parser(), arithmetic_expr())),
                 |(fa, (op, a))| ArithmeticExpr::Aop(op.to_string(), Box::new(fa), Box::new(a)),
             ),
             term(),
-        )(ts)
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedArithmeticExpression)), e.1)),
+        }
     }
 }
 
@@ -617,16 +678,22 @@ fn term_test() {
 
 fn call() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
     move |ts| {
-        map(
+        match map(
             seq(
                 id_token_parser(),
                 map(
-                    seq(parenthesis("(".to_string()), seq(params(), parenthesis(")".to_string()))),
+                    seq(
+                        parenthesis("(".to_string()),
+                        seq(params(), parenthesis(")".to_string())),
+                    ),
                     |(_, (params, _))| params,
                 ),
             ),
             |(id, params)| ArithmeticExpr::Call(id, params),
-        )(ts)
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedFunctionCall)), e.1)),
+        }
     }
 }
 
@@ -646,7 +713,7 @@ fn call_test() {
 
 fn params() -> impl Fn(Vec<Token>) -> ParseResult<Vec<ArithmeticExpr>, Vec<Token>> {
     move |ts| {
-        alt(
+        match alt(
             map(
                 seq(arithmetic_expr(), seq(comma_parser(), params())),
                 |(param, (_, mut params))| {
@@ -655,27 +722,34 @@ fn params() -> impl Fn(Vec<Token>) -> ParseResult<Vec<ArithmeticExpr>, Vec<Token
                 },
             ),
             map(arithmetic_expr(), |param| vec![param]),
-        )(ts)
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedArgumentList)), e.1)),
+        }
     }
 }
 
-
-
 #[test]
 fn params_test() {
-    let tokens = vec![Token::Id("x".to_string()), Token::Comma, Token::Id("y".to_string())];
+    let tokens = vec![
+        Token::Id("x".to_string()),
+        Token::Comma,
+        Token::Id("y".to_string()),
+    ];
     let result = params()(tokens);
     println!("{:?}", result);
 }
 
 fn factor() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
-    // global_id? fn_id? local_id?
     move |ts| {
         alt(
             call(),
             alt(
                 map(number_parser(), |num| ArithmeticExpr::Num(num)),
-                map(id_token_parser(), |id| ArithmeticExpr::LocalID(id)),
+                alt(
+                    map(id_token_parser(), |id| ArithmeticExpr::LocalID(id)),
+                    map(global_id_parser(), |id| ArithmeticExpr::GlobalID(id)),
+                ),
             ),
         )(ts)
     }
@@ -701,11 +775,7 @@ fn boolean_expr() -> impl Fn(Vec<Token>) -> ParseResult<BooleanExpr, Vec<Token>>
 
 #[test]
 fn boolean_expr_test() {
-    let tokens = vec![
-        Token::Num(1),
-        Token::Op(Operation::NotEqual),
-        Token::Num(1),
-    ];
+    let tokens = vec![Token::Num(1), Token::Op(Operation::NotEqual), Token::Num(1)];
     let result = boolean_expr()(tokens);
     println!("{:?}", result);
 }
@@ -727,7 +797,7 @@ fn element() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
 
 fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     move |ts| {
-        map(
+        match map(
             seq(
                 keyword_parser("if".to_string()),
                 seq(
@@ -739,7 +809,10 @@ fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                 ),
             ),
             |(_, (b, (_, (a1, (_, a2)))))| Stmt::If(b, a1, a2),
-        )(ts)
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedIfStatement)), e.1)),
+        }
     }
 }
 
@@ -749,7 +822,6 @@ fn if_parser_test() {
         Token::Keyword(Keyword::If),
         Token::Num(1),
         Token::Op(Operation::NotEqual),
-        Token::Num(1),
         Token::Keyword(Keyword::Then),
         Token::Keyword(Keyword::Skip),
         Token::Keyword(Keyword::Else),
@@ -761,23 +833,25 @@ fn if_parser_test() {
 
 fn while_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     move |ts| {
-        map(
+        match map(
             seq(
                 keyword_parser("while".to_string()),
                 seq(
                     boolean_expr(),
-                    seq(keyword_parser("do".to_string()),
+                    seq(
+                        keyword_parser("do".to_string()),
                         seq(
                             parenthesis("{".to_string()),
-                            seq(
-                                block(), parenthesis("}".to_string())
-                            )
+                            seq(block(), parenthesis("}".to_string())),
                         ),
                     ),
                 ),
             ),
-            |(_, (b, (_, (_, (block, _ )))))| Stmt::While(b, block),
-        )(ts)
+            |(_, (b, (_, (_, (block, _)))))| Stmt::While(b, block),
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedWhileStatement)), e.1)),
+        }
     }
 }
 
@@ -794,7 +868,6 @@ fn while_parser_test() {
         Token::Semi,
         Token::Keyword(Keyword::Skip),
         Token::RParent,
-
     ];
     let result = while_parser()(tokens);
     println!("{:?}", result);
@@ -802,7 +875,7 @@ fn while_parser_test() {
 
 fn block() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
     move |ts| {
-        alt(
+        match alt(
             map(
                 seq(stmt(), seq(semi_colon_parser(), block())),
                 |(stmt, (_, mut block))| {
@@ -811,7 +884,10 @@ fn block() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
                 },
             ),
             map(stmt(), |stmt| vec![stmt]),
-        )(ts)
+        )(ts){
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedBlock)), e.1)),
+        }
     }
 }
 
@@ -826,34 +902,50 @@ fn block_test() {
     println!("{:?}", result);
 }
 
+fn assignment() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
+    move |ts| {
+        match map(
+            seq(
+                alt(id_token_parser(), global_id_parser()),
+                seq(symbol_parser(":=".to_string()), arithmetic_expr()),
+            ),
+            |(id, (_, a))| Stmt::Assign(id, a),
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedAssignment)), e.1)),
+        }
+    }
+}
 fn stmt() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     move |ts| {
-        alt(
+        match alt(
             skip_parser(),
             alt(
                 if_parser(),
                 alt(
                     while_parser(),
                     alt(
-                        map(
-                            seq(
-                                id_token_parser(),
-                                seq(symbol_parser(":=".to_string()), arithmetic_expr()),
-                            ),
-                            |(id, (_, a))| Stmt::Assign(id, a),
-                        ),
-                        map(
-                            seq(
-                                id_token_parser(),
-                                seq(symbol_parser("!=".to_string()), arithmetic_expr()),
-                            ),
-                            |(id, (_, a))| Stmt::Unassign(id, a),
-                        ),
+                        assignment(),
+                        function_parser(),
                     ),
                 ),
             ),
-        )(ts)
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::NotAValidStatement)), e.1)),
+        }
     }
+}
+
+#[test]
+fn stmt_test() {
+    let tokens = vec![
+        Token::GlobalId("X".to_string()),
+        Token::Op(Operation::Assign),
+        Token::Num(1),
+    ];
+    let result = stmt()(tokens);
+    println!("{:?}", result);
 }
 
 fn function_id() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
@@ -872,13 +964,17 @@ fn function_id() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
                         }
                         Err(e) => Err(e),
                     },
-                    _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
-                        Keyword::Def,
-                    )), vec.len())),
+                    _ => Err((
+                        ParseErrorMessage::ExpectedToken(Token::Keyword(Keyword::Def)),
+                        vec.len(),
+                    )),
                 },
-                _ => Err((ParseErrorMessage::ExpectedToken(Token::Keyword(
-                    Keyword::from_str("Expected keyword fn").unwrap(),
-                )), vec.len())),
+                _ => Err((
+                    ParseErrorMessage::ExpectedToken(Token::Keyword(
+                        Keyword::Def,
+                    )),
+                    vec.len(),
+                )),
             }
         } else {
             Err((ParseErrorMessage::EOF, vec.len()))
@@ -896,18 +992,50 @@ fn function_id_test() {
     println!("{:?}", result);
 }
 
+fn args() -> impl Fn(Vec<Token>) -> ParseResult<Vec<String>, Vec<Token>> {
+    move |ts| {
+        match alt(
+            map(
+                seq(id_token_parser(), seq(comma_parser(), args())),
+                |(id, (_, mut args))| {
+                    args.insert(0, id);
+                    args
+                },
+            ),
+            map(id_token_parser(), |id| vec![id]),
+        )(ts){
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedArgumentList)), e.1)),
+        }
+    }
+}
+
+#[test]
+fn args_test() {
+    let tokens = vec![
+        Token::Id("x".to_string()),
+        Token::Comma,
+        Token::Id("y".to_string()),
+    ];
+    let result = args()(tokens);
+    println!("{:?}", result);
+}
+
 // Function parser is a parser that parses a function
 // definition in the form of:
 // fn <function_id>(<params>) { <block> }
 fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     move |ts| {
-        map(
+        match map(
             seq(
-               function_id(),
+                function_id(),
                 seq(
                     map(
-                        seq(parenthesis("(".to_string()), seq(params(), parenthesis(")".to_string()))),
-                        |(_, (params, _))| params,
+                        seq(
+                            parenthesis("(".to_string()),
+                            seq(args(), parenthesis(")".to_string())),
+                        ),
+                        |(_, (arguments, _))| arguments,
                     ),
                     seq(
                         parenthesis("{".to_string()),
@@ -915,8 +1043,11 @@ fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                     ),
                 ),
             ),
-            |(id,(args, (_, (block, _))))| Stmt::Function(id.to_string(), args, block),
-        )(ts)
+            |(id, (args, (_, (block, _))))| Stmt::Function(id.to_string(), args, block),
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedFunctionDefinition)), e.1)),
+        }
     }
 }
 
@@ -939,4 +1070,92 @@ fn function_parser_test() {
     let result = function_parser()(tokens);
     println!("{:?}", result);
 }
+
+fn stmts() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
+    move |ts| {
+        match alt(
+            map(
+                seq(stmt(), seq(semi_colon_parser(), stmts())),
+                |(stmt, (_, mut stmts))| {
+                    stmts.insert(0, stmt);
+                    stmts
+                },
+            ),
+            map(stmt(), |stmt| vec![stmt]),
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedProgram)), e.1)),
+        }
+    }
+}
+
+#[test]
+fn stmts_test() {
+    let tokens = vec![
+        Token::Id("x".to_string()),
+        Token::Op(Operation::Assign),
+        Token::Num(1),
+        Token::Semi,
+        Token::GlobalId("X".to_string()),
+        Token::Op(Operation::Assign),
+        Token::Num(1),
+    ];
+    let result = stmts()(tokens);
+    println!("{:?}", result);
+}
+
+
+fn parse_program() -> impl Fn(Vec<Token>) -> ParseResult<RIMPProgram, Vec<Token>> {
+    move |ts| {
+        match alt(
+            map(stmts(), |stmts| RIMPProgram::Program(stmts)),
+            map(
+                seq(parenthesis("{".to_string()), seq(stmts(), parenthesis("}".to_string()))),
+                |(_, (stmts, _))| RIMPProgram::Program(stmts),
+            ),
+        )(ts) {
+            Ok(parsed) => Ok(parsed),
+            Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedProgram)), e.1)),
+        }
+    }
+}
+
+#[test]
+fn parse_program_test() {
+    let tokens = tokenise("n := 4  Fact := 1");
+    println!("{:?}", tokens);
+    let result = stmts()(tokens);
+    println!("{:?}", result);
+}
+
+fn parse_rimp(tokens: Vec<Token>) -> Result<HashSet<Block>, ParseError> {
+    let parsed = stmts()(tokens);
+    match parsed {
+        Ok(parsed) => {
+            let mut result = HashSet::new();
+            for (head, tail) in parsed {
+                if tail.is_empty() {
+                    result.insert(head.clone());
+                }
+            }
+            Ok(result)
+        },
+        Err(e) => Err(e)
+    }
+}
+
+#[test]
+fn parse_file_test() {
+    let tokens = match fs::read_to_string("programs/while.rimp") {
+        Ok(program) => tokenise(program.clone().as_str()),
+        Err(e) => {
+            println!("Failed to read file. {}", e);
+            return;
+        }
+    };
+    println!("{:?}", tokens);
+    let result = parse_rimp(tokens);
+    println!("{:?}", result);
+}
+
 

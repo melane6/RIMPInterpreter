@@ -497,7 +497,7 @@ impl Language {
             Language::RIMPRegex => Regex::Star(Box::new(Regex::alt_rs(
                 &Regex::Recd("k".to_string(), Box::new(Language::KEYWORD.regex())),
                 &Regex::alt_rs(
-                    &Regex::Recd("i".to_string(), Box::new(Language::ID.regex())),
+                    &Regex::Recd("gi".to_string(), Box::new(Language::GlobalID.regex())),
                     &Regex::alt_rs(
                         &Regex::Recd("o".to_string(), Box::new(Language::OP.regex())),
                         &Regex::alt_rs(
@@ -506,8 +506,8 @@ impl Language {
                                 &Regex::Recd("co".to_string(), Box::new(Language::COMMA.regex())),
                                 &Regex::alt_rs(
                                     &Regex::Recd(
-                                        "gi".to_string(),
-                                        Box::new(Language::GlobalID.regex()),
+                                        "i".to_string(),
+                                        Box::new(Language::ID.regex()),
                                     ),
                                     &Regex::alt_rs(
                                         &Regex::Recd(
