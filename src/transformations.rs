@@ -1,5 +1,5 @@
-use crate::lexer::Token;
-use crate::parser::{ArithmeticExpr, Block, BooleanExpr, FnArgs, ParseResult, RIMPProgram, Stmt};
+
+use crate::parser::{ArithmeticExpr, Block, Stmt};
 
 
 /// Converts a stmt that is a tail recursive function to

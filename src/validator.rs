@@ -2,7 +2,7 @@ use crate::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
 use std::collections::{HashMap, HashSet};
 
 type GlobalVar = HashSet<String>; // Set of global variables
-type FunctionVars = HashMap<String, Vec<(String)>>; // Map of function names to the local variables used in the function
+type FunctionVars = HashMap<String, Vec<String>>; // Map of function names to the local variables used in the function
 
 #[derive(Debug)]
 pub struct TypeChecker {

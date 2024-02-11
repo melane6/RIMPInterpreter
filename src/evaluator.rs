@@ -88,9 +88,13 @@ impl RIMPInterpreter {
                     panic!("Recursion is not allowed");
                 }
                 for arg in self.functions.get(&fn_id).unwrap().clone().0 {
+                    if args.is_empty() {
+                        break;
+                    }
                     let value = self.eval_arithmetic_expr(args[0].clone());
+                    println!("fn {:?}", self.function_name);
                     self.functions
-                        .get_mut(self.function_name.last().unwrap())
+                        .get_mut(&fn_id)
                         .unwrap()
                         .0
                         .insert(arg.0, value);
@@ -224,7 +228,6 @@ impl RIMPInterpreter {
                 while self.eval_boolean_expr(boolean.clone()) {
                     self.eval_block(block.clone());
                 }
-                println!("this was in the middle{:?}", self.environment);
             }
             Stmt::Function(function_name, args, block) => {
                 let mut function_env = Environment::new();
@@ -233,6 +236,19 @@ impl RIMPInterpreter {
                 }
                 function_env.insert("return".to_string(), 0);
                 self.functions.insert(function_name, (function_env, block));
+            }
+            Stmt::Return(expr) => {
+                if self.function_name.last().unwrap() == "main" {
+                    let value = self.eval_arithmetic_expr(expr);
+                    self.environment.insert("return".parse().unwrap(), value);
+                } else {
+                    let value = self.eval_arithmetic_expr(expr);
+                    self.functions
+                        .get_mut(self.function_name.last().unwrap())
+                        .unwrap()
+                        .0
+                        .insert("return".parse().unwrap(), value);
+                }
             }
             _ => {}
         }

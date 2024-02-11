@@ -1,0 +1,7 @@
+// tail-recursive fact
+def fact_tr(n, acc) {
+    if n == 0 then return acc
+    else  return fact_tr(n - 1, n * acc)
+}
+
+result := fact_tr(4, 1)

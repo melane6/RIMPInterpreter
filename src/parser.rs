@@ -182,8 +182,10 @@ where
 
 #[test]
 fn seq_test() {
-    let tokens = vec![Token::Num(1), Token::Op(Operation::Plus), Token::Num(1)];
-    let result = seq(number_parser(), seq(op_parser(), number_parser()))(tokens);
+    let tokens = vec![Token::Op(Operation::Assign),Token::Id("x".to_string()), Token::Op(Operation::Assign),Token::Num(1), Token::Num(1)];
+    let result = alt(map(seq(stmt(), seq(op_parser(), number_parser())), |(a, (op, b))| {
+        op
+    }), op_parser())(tokens);
     println!("{:?}", result);
 }
 
@@ -901,7 +903,11 @@ fn block() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
                     block
                 },
             ),
-            map(stmt(), |stmt| vec![stmt]),
+            alt(
+                map(stmt(), |stmt| vec![stmt]),
+                while_parser(),
+            )
+
         )(ts){
             Ok(parsed) => Ok(parsed),
             Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedBlock)), e.1)),
@@ -963,14 +969,14 @@ fn return_statement_test() {
 fn stmt() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     move |ts| {
         match alt(
-            skip_parser(),
+            function_parser(),
             alt(
                 if_parser(),
                 alt(
                     assignment(),
                     alt(
                         return_statement(),
-                        function_parser(),
+                        skip_parser(),
                     ),
                 ),
             ),
@@ -1086,7 +1092,7 @@ fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                     ),
                     seq(
                         parenthesis("{".to_string()),
-                        seq(block(), parenthesis("}".to_string())),
+                        seq(stmts(), parenthesis("}".to_string())),
                     ),
                 ),
             ),
@@ -1100,6 +1106,15 @@ fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
 
 #[test]
 fn function_parser_test() {
+    let code = "def facty(n) {
+    fact := 1 ;
+}
+    while n > 0 do {
+        fact := fact * n;
+        n := n - 1
+    }
+}";
+    let tokens = tokenise(code);
     let tokens = vec![
         Token::Keyword(Keyword::Def),
         Token::Id("main".to_string()),
@@ -1119,8 +1134,11 @@ fn function_parser_test() {
         Token::Num(1),
         Token::RParent,
     ];
-    let result = function_parser()(tokens);
+    let result = function_parser()(tokens.clone());
+    let len = tokens.len();
+    println!("{:?}", tokens.clone());
     println!("{:?}", result);
+    println!("{:?}", tokens[len- 20]);
 }
 
 fn stmts() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
@@ -1134,11 +1152,20 @@ fn stmts() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
                 },
             ),
             alt(
-                map(stmt(), |stmt| vec![stmt]),
-                while_parser(),
+                map(seq(while_parser(), seq(semi_colon_parser(), stmts())),
+                    |(mut block,(_,block_1))| {
+                        block.extend(block_1);
+                        block
+                    }),
+                alt(
+                    map(stmt(), |stmt| vec![stmt]),
+                    while_parser(),
+                )
             )
-        )(ts) {
-            Ok(parsed) => Ok(parsed),
+        )(ts.clone()) {
+            Ok(parsed) => {
+                Ok(parsed)
+            },
             Err(e) => Err((Errors(Box::from(e.0), Box::from(ParseErrorMessage::MalformedProgram)), e.1)),
         }
     }
@@ -1147,15 +1174,29 @@ fn stmts() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
 #[test]
 fn stmts_test() {
     let tokens = vec![
+        Token::Keyword(Keyword::Def),
+        Token::Id("main".to_string()),
+        Token::LBracket,
+        Token::Id("x".to_string()),
+        Token::Comma,
+        Token::Id("y".to_string()),
+        Token::RBracket,
+        Token::LParent,
         Token::Id("x".to_string()),
         Token::Op(Operation::Assign),
         Token::Num(1),
         Token::Semi,
-        Token::GlobalId("X".to_string()),
-        Token::Op(Operation::Assign),
+        Token::Keyword(Keyword::While),
         Token::Num(1),
-    ];
-    let result = stmts()(tokens);
+        Token::Op(Operation::NotEqual),
+        Token::Num(1),
+        Token::Keyword(Keyword::Do),
+        Token::LParent,
+        Token::Keyword(Keyword::Skip),
+        Token::RParent,
+        Token::RParent,
+        ];
+    let result = function_parser()(tokens);
     println!("{:?}", result);
 }
 
@@ -1183,9 +1224,41 @@ pub(crate) fn parse_rimp(tokens: Vec<Token>) -> Result<HashSet<Block>, ParseErro
     }
 }
 
+fn parse_program(tokens: Vec<Token>) -> Result<HashSet<Block>, ParseError> {
+    let parsed = stmts()(tokens);
+    match parsed {
+        Ok(parsed) => {
+            let mut result = HashSet::new();
+            for (head, tail) in parsed {
+                if tail.is_empty() {
+                    result.insert(head.clone());
+                } else {
+                    if tail.first().is_some() {
+                        if *tail.first().unwrap() == Token::Semi {
+                            let mut new_tail = tail[1..].to_vec();
+                            let new_parsed = stmts()(new_tail);
+                            match new_parsed {
+                                Ok(new_parsed) => {
+                                    for (head, tail) in new_parsed {
+                                        if tail.is_empty() {
+                                            result.insert(head.clone());
+                                        }
+                                    }
+                                },
+                                Err(e) => return Err(e)
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(result)
+        },
+        Err(e) => Err(e)
+    }
+}
 #[test]
 fn parse_file_test() {
-    let tokens = match fs::read_to_string("programs/while.rimp") {
+    let tokens = match fs::read_to_string("programs/while_func.rimp") {
         Ok(program) => tokenise(program.clone().as_str()),
         Err(e) => {
             println!("Failed to read file. {}", e);
@@ -1193,7 +1266,7 @@ fn parse_file_test() {
         }
     };
     println!("{:?}", tokens);
-    let result = parse_rimp(tokens);
+    let result = parse_program(tokens);
     println!("{:?}", result);
 }
 
