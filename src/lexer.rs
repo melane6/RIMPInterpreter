@@ -390,7 +390,7 @@ impl Language {
                                             "true",
                                             &Regex::alt_r(
                                                 "false",
-                                                &Regex::alt_r("for", &Regex::alt("do", "return")),
+                                                &Regex::alt_r("def", &Regex::alt("do", "return")),
                                             ),
                                         ),
                                     ),

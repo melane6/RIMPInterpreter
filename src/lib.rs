@@ -7,6 +7,7 @@ mod parser;
 mod regex;
 mod transformations;
 mod utils;
+mod validator;
 
 use crate::utils::init_logging;
 use wasm_bindgen::prelude::*;

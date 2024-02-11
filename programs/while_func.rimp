@@ -1,0 +1,13 @@
+
+re := 2 ;
+def facty(n) {
+    fact := 1 ;
+
+    while n > 0 do {
+        fact := fact * n;
+        n := n - 1
+    }
+};
+fna := fact(4);
+
+n := 10
