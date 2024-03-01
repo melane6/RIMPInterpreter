@@ -93,7 +93,7 @@ impl<T> IsSeq<T> for Vec<T> {
 type ParserResult<T, I> = HashSet<(T, I)>;
 
 pub(crate) type ParseResult<T, I> = Result<HashSet<(T, I)>, ParseError>;
-pub(crate) type ParseFinalResult<T> = Result<HashSet<(T)>, ParseError>;
+pub(crate) type ParseFinalResult<T> = Result<HashSet<T>, ParseError>;
 
 fn parse_all<I, T>(parsed: ParserResult<T, Vec<I>>) -> HashSet<T>
 where
@@ -1235,7 +1235,7 @@ fn parse_program(tokens: Vec<Token>) -> Result<HashSet<Block>, ParseError> {
                 } else {
                     if tail.first().is_some() {
                         if *tail.first().unwrap() == Token::Semi {
-                            let mut new_tail = tail[1..].to_vec();
+                            let new_tail = tail[1..].to_vec();
                             let new_parsed = stmts()(new_tail);
                             match new_parsed {
                                 Ok(new_parsed) => {

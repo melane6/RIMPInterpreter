@@ -13,11 +13,13 @@ impl Inverter {
         }
     }
 
+
+
     pub fn invert(&mut self) {
-        if self.all {
-            while self.interpreter.step() {}
-        } else {
-            self.interpreter.step();
-        }
+        // if self.all {
+        //     self.interpreter.interpret_all();
+        // } else {
+        //     self.interpreter.interpret_step();
+        // }
     }
 }
