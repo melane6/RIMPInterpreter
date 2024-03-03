@@ -1,13 +1,13 @@
-use crate::evaluator::RIMPInterpreter;
+use crate::evaluator::Evaluator;
 
-struct Inverter {
-    interpreter: RIMPInterpreter,
+struct Debugger {
+    interpreter: Evaluator,
     all: bool, // If true, invert til the start of the program else invert a step
 }
 
-impl Inverter {
-    pub fn new(interpreter: RIMPInterpreter, all: bool) -> Self {
-        Inverter {
+impl Debugger {
+    pub fn new(interpreter: Evaluator, all: bool) -> Self {
+        Debugger {
             interpreter,
             all,
         }

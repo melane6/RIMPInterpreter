@@ -1,7 +1,7 @@
 use crate::lexer::tokenise;
 use crate::parser::{parse_rimp, ArithmeticExpr, Block, BooleanExpr, Stmt};
 use crate::validator::TypeChecker;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs;
 
 #[derive(Debug)]
@@ -21,16 +21,17 @@ impl Counter {
 
 type Environment = HashMap<String, i64>;
 
-pub(crate) struct RIMPInterpreter {
+pub(crate) struct Evaluator {
     counter: Counter,
     environment: Environment,
     functions: HashMap<String, (Environment, Block)>,
     function_name: Vec<String>,
-    back_trace: Block,
+    back_trace: Block, // Reverse the steps to get the start of the program
+    program: Block, //
 }
 
 // For pretty printing and debugging or displaying the state of the interpreter
-impl std::fmt::Debug for RIMPInterpreter {
+impl std::fmt::Debug for Evaluator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -40,26 +41,32 @@ impl std::fmt::Debug for RIMPInterpreter {
     }
 }
 
-impl RIMPInterpreter {
-    fn new() -> RIMPInterpreter {
-        RIMPInterpreter {
+impl Evaluator {
+    pub(crate) fn new(program: Block) -> Evaluator {
+        // Create RIMPInterpreter with necessary environment and functions for the program
+        Evaluator {
             counter: Counter::new(),
             environment: Environment::new(),
             functions: Default::default(),
             function_name: vec!["main".to_string()],
             back_trace: vec![],
+            program,
         }
     }
 
-    pub(crate) fn interpret_all(&mut self, program: HashSet<Block>) {
-        let block = program.iter().next().unwrap();
-        self.eval_block(block.clone());
+    pub(crate) fn interpret_all(&mut self) {
+        self.eval_block(self.program.clone());
         println!("{:?}", self.environment);
         println!("{:?}", self.functions);
     }
 
-    pub(crate) fn interpret_step(&mut self, program: Block) -> Block {
-        self.eval_small_step_block(program.clone())
+    pub(crate) fn interpret_step(&mut self) {
+        self.program = self.eval_small_step_block(self.program.clone());
+        log::debug!("{:?}", self) // Print the state of the interpreter
+    }
+
+    pub(crate) fn get_reverse_program(&mut self) -> Block {
+        self.back_trace.clone()
     }
 
     fn eval_small_step_arithmetic(&mut self, expr: ArithmeticExpr) -> ArithmeticExpr {
@@ -67,7 +74,11 @@ impl RIMPInterpreter {
             ArithmeticExpr::Num(n) => ArithmeticExpr::Num(n),
             ArithmeticExpr::LocalID(id) => {
                 if self.function_name.last().unwrap() == "main" {
-                    ArithmeticExpr::Num(self.environment.get(&id).unwrap().clone())
+                    if self.environment.contains_key(&id) {
+                        ArithmeticExpr::Num(self.environment.get(&id).unwrap().clone())
+                    } else {
+                        ArithmeticExpr::Num(0) // default value
+                    }
                 } else {
                     let function_env = self
                         .functions
@@ -218,10 +229,8 @@ impl RIMPInterpreter {
     fn eval_small_step_boolean_expr(&mut self, expr: BooleanExpr) -> BooleanExpr {
         match expr {
             BooleanExpr::Bop(op, a1, a2) => match a1 {
-                ArithmeticExpr::Num(num) => match a2 {
-                    ArithmeticExpr::Num(num) => {
-                        let n1 = self.eval_arithmetic_expr(a1);
-                        let n2 = self.eval_arithmetic_expr(a2);
+                ArithmeticExpr::Num(n1) => match a2 {
+                    ArithmeticExpr::Num(n2) => {
                         match op.as_str() {
                             "==" => {
                                 if n1 == n2 {
@@ -270,7 +279,7 @@ impl RIMPInterpreter {
                     }
                     _ => {
                         let new_a2 = self.eval_small_step_arithmetic(a2);
-                        BooleanExpr::Bop(op, ArithmeticExpr::Num(num), new_a2)
+                        BooleanExpr::Bop(op, ArithmeticExpr::Num(n1), new_a2)
                     }
                 },
                 _ => {
@@ -346,12 +355,17 @@ impl RIMPInterpreter {
 
     fn eval_small_step_stmt(&mut self, stmt: Stmt) -> Stmt {
         match stmt {
-            Stmt::Skip => Stmt::Skip,
+            Stmt::Skip => {
+                self.back_trace.push(Stmt::Skip);
+                Stmt::Skip
+            },
             Stmt::Assign(id, a1) => {
                 let new_a1 = self.eval_small_step_arithmetic(a1.clone());
                 if new_a1 == a1 {
+                    let original_value = self.eval_small_step_arithmetic(ArithmeticExpr::LocalID(id.clone()));
+                    println!("original value {:?}", original_value);
+                    self.back_trace.push(Stmt::Unassign(id.clone(),original_value)); // Add the original statement to the back trace
                     self.eval_stmt(Stmt::Assign(id.clone(), new_a1.clone()));
-                    self.back_trace.push(Stmt::Assign(id.clone(), a1.clone()));
                     Stmt::Skip
                 } else {
                     Stmt::Assign(id, new_a1)
@@ -363,40 +377,22 @@ impl RIMPInterpreter {
             Stmt::If(boolean, then_block, else_block) => {
                 let new_boolean = self.eval_small_step_boolean_expr(boolean.clone());
                 if new_boolean == boolean {
-                    match new_boolean {
-                        BooleanExpr::True => {
-                            self.back_trace.push(Stmt::If(
-                                boolean.clone(),
-                                then_block.clone(),
-                                else_block.clone(),
-                            ));
-                        }
-                        BooleanExpr::False => {
-                            self.back_trace.push(Stmt::If(
-                                boolean.clone(),
-                                then_block.clone(),
-                                else_block.clone(),
-                            ));
-                        }
-                        _ => panic!("Boolean expression has not been evaluated fully"),
-                    }
                     Stmt::If(boolean, then_block, else_block)
                 } else {
+                    self.back_trace.push(Stmt::If(
+                        boolean.clone(),
+                        then_block.clone(),
+                        else_block.clone(),
+                    ));  // Add the original statement to the back trace
                     Stmt::If(new_boolean, then_block, else_block)
                 }
             }
             Stmt::While(boolean, block) => {
                 let new_boolean = self.eval_small_step_boolean_expr(boolean.clone());
                 if new_boolean == boolean {
-                    if self.eval_boolean_expr(boolean.clone()) {
-                        self.eval_small_step_block(block.clone());
-                        self.back_trace
-                            .push(Stmt::While(boolean.clone(), block.clone()));
-                        Stmt::Skip
-                    } else {
-                        Stmt::Skip
-                    }
+                    Stmt::While(boolean, block)
                 } else {
+                    self.back_trace.push(Stmt::While(boolean.clone(), block.clone())); // Add the original statement to the back trace
                     Stmt::While(new_boolean, block)
                 }
             }
@@ -412,9 +408,9 @@ impl RIMPInterpreter {
                 let value = self.eval_small_step_arithmetic(expr.clone());
                 if value == expr.clone() {
                     self.eval_stmt(Stmt::Return(expr.clone()));
-                    self.back_trace.push(Stmt::Return(expr.clone()));
                     Stmt::Skip
                 } else {
+                    self.back_trace.push(Stmt::Return(expr.clone()));
                     Stmt::Return(value)
                 }
             }
@@ -436,7 +432,6 @@ impl RIMPInterpreter {
                         .0
                         .insert(id.clone(), value);
                 }
-                self.back_trace.push(Stmt::Assign(id, expr.clone()));
             }
             Stmt::Skip => {}
             Stmt::Unassign(id, value) => {
@@ -488,23 +483,29 @@ impl RIMPInterpreter {
                     then_block = self.remap_vars(then_block, mapping.clone());
                     else_block = self.remap_vars(else_block, mapping.clone());
                 }
-                if self.eval_boolean_expr(boolean_expr) {
-                    self.eval_block(then_block);
+                if self.eval_boolean_expr(boolean_expr.clone()) {
+                    self.eval_block(then_block.clone());
                 } else {
-                    self.eval_block(else_block);
+                    self.eval_block(else_block.clone());
                 }
+                self.back_trace.push(Stmt::If(
+                    boolean_expr,
+                    then_block,
+                    else_block,
+                ));
             }
             Stmt::While(boolean, block) => {
                 while self.eval_boolean_expr(boolean.clone()) {
                     self.eval_block(block.clone());
                 }
+                self.back_trace.push(Stmt::While(boolean.clone(), block.clone()));
             }
             Stmt::Function(function_name, args, block) => {
                 let mut function_env = Environment::new();
                 for arg in args {
                     function_env.insert(arg, 0); // default value
                 }
-                function_env.insert("return".to_string(), 0);
+                function_env.insert("return".to_string(), 0); // default value for return value
                 self.functions.insert(function_name, (function_env, block));
             }
             Stmt::Return(expr) => {
@@ -524,6 +525,36 @@ impl RIMPInterpreter {
         }
     }
 
+    fn eval_back_step_block(&mut self) -> Block {
+        // Evaluate one step backward in the pass in block
+        let mut new_block = self.back_trace.clone();
+        // Remove the last statement from the back trace
+        let remove_statement = self.back_trace.remove(new_block.len() - 1);
+        // Insert the removed statement back to the program
+        match remove_statement {
+            Stmt::Skip | Stmt::Assign(_, _) | Stmt::If(_,_,_) | Stmt::While(_,_) | Stmt::Function(_,_,_) | Stmt::Return(_)=> {
+                self.program.insert(0, remove_statement.clone()); // Don't insert Unassign
+            }
+            _ => {}
+        }
+        match remove_statement {
+            Stmt::Unassign(id, value) => {
+                let value = self.eval_arithmetic_expr(value); // Value should be Num
+                if self.function_name.last().unwrap() == "main" {
+                    self.environment.insert(id.clone(), value);
+                } else {
+                    self.functions
+                        .get_mut(self.function_name.last().unwrap())
+                        .unwrap()
+                        .0
+                        .insert(id.clone(), value);
+                }
+            }
+            _ => {}
+        }
+        new_block
+    }
+
     fn eval_small_step_block(&mut self, block: Block) -> Block {
         let mut new_block = block.clone();
         let remove_statement = new_block.remove(0);
@@ -534,7 +565,7 @@ impl RIMPInterpreter {
             // No change
             match new_stmt {
                 Stmt::If(exp, then_block, else_block) => {
-                    let mut if_stat_block = vec![];
+                    let mut if_stat_block ;
                     if self.eval_boolean_expr(exp) {
                         if_stat_block = then_block.clone();
                         if_stat_block.extend(new_block);
@@ -545,7 +576,7 @@ impl RIMPInterpreter {
                     if_stat_block
                 }
                 Stmt::While(exp, block) => {
-                    let mut while_stat_block = vec![];
+                    let mut while_stat_block ;
                     if self.eval_boolean_expr(exp) {
                         while_stat_block = block.clone();
                         while_stat_block.push(remove_statement); // Add the while statement back to check the condition again
@@ -663,7 +694,6 @@ impl RIMPInterpreter {
 
 #[test]
 fn main() {
-    let mut interpreter = RIMPInterpreter::new();
     let tokens = match fs::read_to_string("programs/while_func.rimp") {
         Ok(program) => tokenise(program.clone().as_str()),
         Err(e) => {
@@ -676,7 +706,9 @@ fn main() {
     println!("{:?}", result);
     match result {
         Ok(program) => {
-            interpreter.interpret_all(program);
+            let program = program.iter().next().unwrap();
+            let mut interpreter = Evaluator::new(program.clone());
+            interpreter.interpret_all();
         }
         Err(e) => {
             println!("Failed to parse program. {:?}", e);
@@ -686,7 +718,6 @@ fn main() {
 
 #[test]
 fn test_interpret_step() {
-    let mut interpreter = RIMPInterpreter::new();
     let tokens = match fs::read_to_string("programs/if.rimp") {
         Ok(program) => tokenise(program.clone().as_str()),
         Err(e) => {
@@ -700,10 +731,45 @@ fn test_interpret_step() {
     match result {
         Ok(program) => {
             let program = program.iter().next().unwrap();
-            let block = interpreter.interpret_step(program.clone());
+            let mut interpreter = Evaluator::new(program.clone());
+            interpreter.interpret_step();
+            while interpreter.program.len() > 0 {
+                println!("{:?}", interpreter);
+                interpreter.interpret_step();
+            }
         }
         Err(e) => {
             println!("Failed to parse program. {:?}", e);
         }
     }
+}
+
+#[test]
+fn test_eval_small_step_arithmetic() {
+    let tokens = match fs::read_to_string("programs/if.rimp") {
+        Ok(program) => tokenise(program.clone().as_str()),
+        Err(e) => {
+            println!("Failed to read file. {}", e);
+            return;
+        }
+    };
+    println!("{:?}", tokens);
+    let result = parse_rimp(tokens);
+    println!("{:?}", result);
+    match result {
+        Ok(program) => {
+            let program = program.iter().next().unwrap();
+            let mut interpreter = Evaluator::new(program.clone());
+            interpreter.interpret_step();
+            println!("{:?}", interpreter);
+            interpreter.eval_back_step_block();
+            println!("{:?}", interpreter);
+            interpreter.interpret_step();
+            println!("{:?}", interpreter);
+
+        }
+        Err(e) => {
+            println!("Failed to parse program. {:?}", e);
+        }
+    };
 }

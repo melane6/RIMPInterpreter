@@ -1,4 +1,4 @@
-mod debugger;
+mod interpreter;
 mod error_handler;
 mod evaluator;
 mod inverter;
