@@ -3,6 +3,7 @@ use crate::parser::{parse_rimp, ArithmeticExpr, Block, BooleanExpr, Stmt};
 use crate::validator::TypeChecker;
 use std::collections::HashMap;
 use std::fs;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[derive(Debug)]
 struct Counter {
@@ -21,6 +22,7 @@ impl Counter {
 
 type Environment = HashMap<String, i64>;
 
+#[wasm_bindgen]
 pub(crate) struct Evaluator {
     counter: Counter,
     environment: Environment,

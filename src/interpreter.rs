@@ -1,7 +1,9 @@
+use wasm_bindgen::prelude::wasm_bindgen;
 use crate::evaluator::Evaluator;
 use crate::parser::Block;
 
-struct Interpreter {
+#[wasm_bindgen()]
+pub(crate) struct Interpreter {
     forward_interpreter: Evaluator,
     temp_interpreter: Evaluator, // Temporary interpreter to debug ?
     debugger_mode: bool,
