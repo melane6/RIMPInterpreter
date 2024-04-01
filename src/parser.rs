@@ -2,9 +2,10 @@ use crate::lexer::{Keyword, Operation, Token, tokenise};
 use crate::transformations::while_loop_transform;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
-use std::fs;
+use std::{fmt, fs};
 use std::hash::Hash;
 use std::str::FromStr;
+use crate::parser::ArithmeticExpr::Aop;
 use crate::parser::ParseErrorMessage::Errors;
 
 
@@ -33,14 +34,10 @@ pub enum ParseErrorMessage {
 }
 
 pub type ParseError = (ParseErrorMessage, usize);
+
 pub type Block = Vec<Stmt>;
 
 pub type FnArgs = Vec<String>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RIMPProgram {
-    Program(Block),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Stmt {
@@ -54,6 +51,59 @@ pub enum Stmt {
     Return(ArithmeticExpr),
 }
 
+impl fmt::Display for Stmt {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Stmt::Skip => write!(f, "skip"),
+            Stmt::Assign(id, value) => write!(f, "{} := {}", id, value.to_string()),
+            Stmt::Unassign(id, value) => write!(f, "{} =: {}", id, value.to_string()),
+            Stmt::If(boolean, then_block, else_block) => {
+                let mut if_stmt = format!("if {} then\n", boolean.to_string());
+                for stmt in then_block {
+                    if_stmt.push_str(&format!("  {}\n", stmt.to_string()));
+                }
+                if_stmt.push_str("else\n");
+                for stmt in else_block {
+                    if_stmt.push_str(&format!("  {}\n", stmt.to_string()));
+                }
+                write!(f, "{}", if_stmt)
+            }
+            Stmt::While(boolean, block) => {
+                let mut while_stmt = format!("while {} do\n", boolean.to_string());
+                for stmt in block {
+                    while_stmt.push_str(&format!("  {}\n", stmt.to_string()));
+                }
+                write!(f, "{}", while_stmt)
+            }
+            Stmt::WhileAcc(boolean, block, acc) => {
+                let mut while_stmt = format!("while {} do\n", boolean.to_string());
+                for stmt in block {
+                    while_stmt.push_str(&format!("  {}\n", stmt.to_string()));
+                }
+                while_stmt.push_str(&format!("  {} := {} + 1\n", acc, acc));
+                write!(f, "{}", while_stmt)
+            }
+            Stmt::Function(fn_name, args, block) => {
+                let mut function = format!("fn {}(", fn_name);
+                for arg in args {
+                    if args.last().unwrap() == arg {
+                        function.push_str(&format!("{}) {{\n", arg));
+                    } else {
+                        function.push_str(&format!("{}, ", arg));
+                    }
+                }
+                function.push_str(") {\n");
+                for stmt in block {
+                    function.push_str(&format!("  {}\n", stmt.to_string()));
+                }
+                function.push_str("}");
+                write!(f, "{}", function)
+            }
+            Stmt::Return(value) => write!(f, "return {}", value.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ArithmeticExpr {
     Num(i64),
@@ -63,12 +113,56 @@ pub enum ArithmeticExpr {
     Call(String, Vec<ArithmeticExpr>),
 }
 
+impl fmt::Display for ArithmeticExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ArithmeticExpr::Num(n) => write!(f, "{}", n),
+            ArithmeticExpr::LocalID(id) => write!(f, "{}", id),
+            ArithmeticExpr::GlobalID(id) => write!(f, "{}", id),
+            ArithmeticExpr::Aop(op, a1, a2) => write!(f, "({} {} {})", a1.to_string(), op, a2.to_string()),
+            ArithmeticExpr::Call(fn_name, args) => {
+                let mut call = format!("{}(", fn_name);
+                for arg in args {
+                    if args.last().unwrap() == arg {
+                        call.push_str(&format!("{})", arg.to_string()));
+                    } else {
+                        call.push_str(&format!("{}, ", arg.to_string()));
+                    }
+                }
+                call.push_str(")");
+                write!(f, "{}", call)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BooleanExpr {
     True,
     False,
     Bop(String, ArithmeticExpr, ArithmeticExpr),
     Lop(String, Box<BooleanExpr>, Box<BooleanExpr>),
+}
+
+impl fmt::Display for BooleanExpr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BooleanExpr::True => write!(f, "true"),
+            BooleanExpr::False => write!(f, "false"),
+            BooleanExpr::Bop(op, a1, a2) => write!(f, "({} {} {})", a1.to_string(), op, a2.to_string()),
+            BooleanExpr::Lop(op, b1, b2) => write!(f, "({} {} {})", b1.to_string(), op, b2.to_string()),
+        }
+    }
+}
+
+#[test]
+fn display_code() {
+    let code = Stmt::Assign("x".to_string(), ArithmeticExpr::Num(1));
+    let code2 = Stmt::Assign("y".to_string(), Aop("+".to_string(), Box::new(ArithmeticExpr::LocalID("x".to_string())), Box::new(ArithmeticExpr::Num(1))));
+    let while_loop = Stmt::While(BooleanExpr::Bop("==".to_string(), ArithmeticExpr::LocalID("x".to_string()), ArithmeticExpr::Num(1)), vec![Stmt::Assign("x".to_string(), Aop("+".to_string(), Box::new(ArithmeticExpr::LocalID("x".to_string())), Box::new(ArithmeticExpr::Num(1))))]);
+    println!("{:?}", code.to_string());
+    println!("{:?}", code2.to_string());
+    println!("{:?}", while_loop.to_string());
 }
 type TokenList = Vec<Token>;
 
