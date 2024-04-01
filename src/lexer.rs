@@ -763,6 +763,7 @@ fn escape(s: &str) -> String {
     escaped
 }
 
+
 pub(crate) fn tokenise(s: &str) -> Vec<Token> {
     let mut tokens = vec![];
     match lexing(s, Language::RIMPRegex.regex()) {

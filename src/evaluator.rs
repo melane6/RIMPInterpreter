@@ -43,6 +43,8 @@ impl std::fmt::Debug for Evaluator {
     }
 }
 
+
+
 impl Evaluator {
     pub(crate) fn new(program: Block) -> Evaluator {
         // Create RIMPInterpreter with necessary environment and functions for the program
@@ -52,9 +54,26 @@ impl Evaluator {
             functions: Default::default(),
             function_name: vec!["main".to_string()],
             back_trace: vec![],
-            program,
+            program
         }
     }
+
+    pub(crate) fn get_program(&self) -> String {
+        let mut program = String::new();
+        for stmt in self.program.clone() {
+            program.push_str(format!("{};\n", stmt.to_string()).as_str());
+        }
+        program
+    }
+    pub(crate) fn write(&mut self) {
+        self.program = self.eval_small_step_block(self.program.clone());
+        log::debug!("{:?}", self) // Print the state of the interpreter
+    }
+
+    pub(crate) fn empty_program(&mut self) -> bool {
+        self.program.is_empty()
+    }
+
 
     pub(crate) fn interpret_all(&mut self) {
         self.eval_block(self.program.clone());
@@ -434,10 +453,21 @@ impl Evaluator {
                         .0
                         .insert(id.clone(), value);
                 }
+                // todo!("Implement the back trace for assign statement")
             }
             Stmt::Skip => {}
             Stmt::Unassign(id, value) => {
-                todo!("Implement the unassign statement")
+                if self.function_name.last().unwrap() == "main" {
+                    let value = self.eval_arithmetic_expr(value.clone());
+                    self.environment.insert(id.clone(), value);
+                } else {
+                    let value = self.eval_arithmetic_expr(value.clone());
+                    self.functions
+                        .get_mut(self.function_name.last().unwrap())
+                        .unwrap()
+                        .0
+                        .insert(id.clone(), value);
+                }
             }
             Stmt::If(boolean_expr, mut then_block, mut else_block) => {
                 let mut validator = TypeChecker::new();
@@ -768,10 +798,38 @@ fn test_eval_small_step_arithmetic() {
             println!("{:?}", interpreter);
             interpreter.interpret_step();
             println!("{:?}", interpreter);
+            interpreter.interpret_step();
+            println!("{:?}", interpreter);
+            interpreter.eval_back_step_block();
+            println!("{:?}", interpreter);
 
         }
         Err(e) => {
             println!("Failed to parse program. {:?}", e);
         }
     };
+}
+
+#[test]
+fn print_program() {
+    let tokens = match fs::read_to_string("programs/while_func.rimp") {
+        Ok(program) => tokenise(program.clone().as_str()),
+        Err(e) => {
+            println!("Failed to read file. {}", e);
+            return;
+        }
+    };
+    println!("{:?}", tokens);
+    let result = parse_rimp(tokens);
+    println!("{:?}", result);
+    match result {
+        Ok(program) => {
+            let program = program.iter().next().unwrap();
+            let mut interpreter = Evaluator::new(program.clone());
+            println!("{}", interpreter.get_program());
+        }
+        Err(e) => {
+            println!("Failed to parse program. {:?}", e);
+        }
+    }
 }
