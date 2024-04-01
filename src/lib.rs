@@ -31,6 +31,23 @@ pub fn initialise() -> Evaluator {
 }
 
 #[wasm_bindgen]
+pub fn run(program: String) -> String {
+    let tokens = lexer::tokenise(program.as_str());
+    let result = parser::parse_rimp(tokens);
+    match result {
+        Ok(program) => {
+            let program = program.iter().next().unwrap();
+            let mut evaluator = Evaluator::new(program.clone());
+            evaluator.interpret_all();
+            return format!("{:?}", evaluator);
+        }
+        Err(e) => {
+            return format!("Failed to translate program due to {:?}", e);
+        }
+    }
+}
+
+#[wasm_bindgen]
 pub fn initialize_library() {
     set_panic_hook();
 }

@@ -37,8 +37,8 @@ impl std::fmt::Debug for Evaluator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "RIMPInterpreter {{ counter: {:?}, environment: {:?}, functions: {:?}, function_name: {:?}, back_trace: {:?} }}",
-            self.counter, self.environment, self.functions, self.function_name, self.back_trace
+            " {{ environment: {},\n back_trace: {} }}",
+            self.get_environment(),  self.get_back_program().to_string()
         )
     }
 }
@@ -58,9 +58,25 @@ impl Evaluator {
         }
     }
 
+    pub(crate) fn get_environment(&self) -> String {
+        let mut program = String::new();
+        for (key, value) in self.environment.clone() {
+            program.push_str(format!("{}: {}\n", key, value).as_str());
+        }
+        program
+    }
+
     pub(crate) fn get_program(&self) -> String {
         let mut program = String::new();
         for stmt in self.program.clone() {
+            program.push_str(format!("{};\n", stmt.to_string()).as_str());
+        }
+        program
+    }
+
+    pub(crate) fn get_back_program(&self) -> String {
+        let mut program = String::new();
+        for stmt in self.back_trace.clone() {
             program.push_str(format!("{};\n", stmt.to_string()).as_str());
         }
         program
