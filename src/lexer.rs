@@ -505,10 +505,7 @@ impl Language {
                             &Regex::alt_rs(
                                 &Regex::Recd("co".to_string(), Box::new(Language::COMMA.regex())),
                                 &Regex::alt_rs(
-                                    &Regex::Recd(
-                                        "i".to_string(),
-                                        Box::new(Language::ID.regex()),
-                                    ),
+                                    &Regex::Recd("i".to_string(), Box::new(Language::ID.regex())),
                                     &Regex::alt_rs(
                                         &Regex::Recd(
                                             "s".to_string(),
@@ -762,7 +759,6 @@ fn escape(s: &str) -> String {
     }
     escaped
 }
-
 
 pub(crate) fn tokenise(s: &str) -> Vec<Token> {
     let mut tokens = vec![];

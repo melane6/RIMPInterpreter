@@ -1,8 +1,8 @@
-use std::cmp::PartialEq;
-use wasm_bindgen::prelude::wasm_bindgen;
 use crate::evaluator::Evaluator;
 use crate::lexer::tokenise;
-use crate::parser::{parse_rimp};
+use crate::parser::parse_rimp;
+use std::cmp::PartialEq;
+use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen]
 #[derive(PartialEq, Debug, Clone)]
@@ -17,7 +17,7 @@ pub enum DebuggerMode {
     // Step out of a function call
     StepOver,
     // Step over a function call
-    None,           // No debugger mode - run the whole program
+    None, // No debugger mode - run the whole program
 }
 
 #[wasm_bindgen]
@@ -27,10 +27,8 @@ pub(crate) struct Debugger {
     breakpoints: Vec<usize>,
 }
 
-
 #[wasm_bindgen]
 impl Debugger {
-
     /// Create a new debugger instance
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
@@ -68,49 +66,56 @@ impl Debugger {
         format!("{}", self.forward_interpreter.get_program())
     }
 
-    pub fn set_breakpoints(&mut self, breakpoints: Vec<usize>) { // Set the breakpoints for the debugger
+    pub fn set_breakpoints(&mut self, breakpoints: Vec<usize>) {
+        // Set the breakpoints for the debugger
         self.breakpoints = breakpoints;
     }
 
-    pub fn get_breakpoints(&self) -> Vec<usize> { // Get the breakpoints for the debugger
+    pub fn get_breakpoints(&self) -> Vec<usize> {
+        // Get the breakpoints for the debugger
         self.breakpoints.clone()
     }
 
-    pub fn set_debugger_mode(&mut self, mode: DebuggerMode) { // Set the debugger mode
+    pub fn set_debugger_mode(&mut self, mode: DebuggerMode) {
+        // Set the debugger mode
         self.debugger_mode = mode;
     }
 
-    pub fn get_debugger_mode(&self) -> DebuggerMode { // Get the debugger mode
+    pub fn get_debugger_mode(&self) -> DebuggerMode {
+        // Get the debugger mode
         self.debugger_mode.clone()
     }
 
-    pub fn run(&mut self) { // Run the whole program from start to end
+    pub fn run(&mut self) {
+        // Run the whole program from start to end
         if self.debugger_mode == DebuggerMode::None {
             self.forward_interpreter.interpret_all();
         }
     }
 
-    pub fn step_forward(&mut self) { // Run the program one step at a time
+    pub fn step_forward(&mut self) -> String {
+        // Run the program one step at a time
         if self.debugger_mode == DebuggerMode::StepForward {
             if self.forward_interpreter.get_program().is_empty() {
-                panic!("Program is empty");
+                return "Program is empty".to_string();
             }
             self.forward_interpreter.interpret_step();
-            println!("{:?}", self.forward_interpreter.get_program());
+            return self.forward_interpreter.get_environment();
         } else {
-            panic!("Interpreter is not in debugger mode");
+            return "Interpreter is not in debugger mode".to_string();
         }
     }
 
-    pub fn step_backward(&mut self) { // Run the program one step at a time in reverse
+    pub fn step_backward(&mut self) -> String {
+        // Run the program one step at a time in reverse
         if self.debugger_mode == DebuggerMode::StepBackward {
             if self.forward_interpreter.get_back_program().is_empty() {
-                panic!("You are at the start of the program");
+                return "You are at the start of the program".to_string();
             }
             self.forward_interpreter.step_back();
-            panic!("Step backward is not implemented yet");
+            return self.forward_interpreter.get_environment();
         } else {
-            panic!("Interpreter is not in debugger mode");
+            return "Interpreter is not in debugger mode".to_string();
         }
     }
 }

@@ -29,7 +29,7 @@ impl TypeChecker {
         for stmt in program {
             match stmt {
                 Stmt::Skip => {}
-                Stmt::Assign(id, value) => {
+                Stmt::Assign(id, _value) => {
                     if fn_name == "main" {
                         self.global.insert(id.clone());
                         variables.push(id.clone());
@@ -42,11 +42,18 @@ impl TypeChecker {
                 }
                 Stmt::If(boolean, then_block, else_block) => {
                     let mut boolean_vars = self.check_boolean_expr(boolean, fn_name.clone());
-                    let mut then_vars = self.check(then_block, fn_name.clone() );
+                    let mut then_vars = self.check(then_block, fn_name.clone());
                     let mut else_vars = self.check(else_block, fn_name.clone());
-
+                    variables.append(&mut boolean_vars);
+                    variables.append(&mut then_vars);
+                    variables.append(&mut else_vars);
                 }
-                Stmt::While(_, _) => {}
+                Stmt::While(boolean, block) => {
+                    let mut boolean_vars = self.check_boolean_expr(boolean, fn_name.clone());
+                    let mut block_vars = self.check(block, fn_name.clone());
+                    variables.append(&mut boolean_vars);
+                    variables.append(&mut block_vars);
+                }
                 Stmt::WhileAcc(_, _, _) => {}
                 Stmt::Function(fn_name, arg, block) => {
                     self.functions.insert(fn_name.clone(), arg);
@@ -80,7 +87,11 @@ impl TypeChecker {
         variables
     }
 
-    pub fn check_arithmetic_expr(&mut self, arithmetic: ArithmeticExpr, fn_name: String) -> Vec<String> {
+    pub fn check_arithmetic_expr(
+        &mut self,
+        arithmetic: ArithmeticExpr,
+        fn_name: String,
+    ) -> Vec<String> {
         let mut variables = vec![];
         match arithmetic {
             ArithmeticExpr::Num(_) => {}
@@ -96,7 +107,7 @@ impl TypeChecker {
                 variables.append(&mut a1_vars);
                 variables.append(&mut a2_vars);
             }
-            ArithmeticExpr::Call(function_name, args) => {
+            ArithmeticExpr::Call(_function_name, args) => {
                 for arg in args {
                     let mut arg_vars = self.check_arithmetic_expr(arg, fn_name.clone());
                     variables.append(&mut arg_vars);
@@ -107,7 +118,12 @@ impl TypeChecker {
     }
 
     // check for overlapping variables and remap them
-    pub(crate) fn check_overlapping_vars(&mut self, vars: Vec<String>, then_vars: Vec<String>, else_vars: Vec<String>) -> Vec<String> {
+    pub(crate) fn check_overlapping_vars(
+        &mut self,
+        vars: Vec<String>,
+        then_vars: Vec<String>,
+        else_vars: Vec<String>,
+    ) -> Vec<String> {
         let mut overlapping_vars = vec![];
         for var in vars {
             if then_vars.contains(&var) || else_vars.contains(&var) {
@@ -121,11 +137,16 @@ impl TypeChecker {
 #[test]
 fn boolean_expr_test() {
     let mut type_checker = TypeChecker::new();
-    let boolean = BooleanExpr::Bop("==".to_string(), ArithmeticExpr::Num(1), ArithmeticExpr::LocalID("x".to_string()));
+    let boolean = BooleanExpr::Bop(
+        "==".to_string(),
+        ArithmeticExpr::Num(1),
+        ArithmeticExpr::LocalID("x".to_string()),
+    );
     let else_block = vec![Stmt::Assign("x".to_string(), ArithmeticExpr::Num(0))];
     let vars = type_checker.check_boolean_expr(boolean, "main".to_string());
     let else_vars = type_checker.check(else_block, "main".to_string());
     println!("{:?}", vars);
     println!("{:?}", else_vars);
     let overlapping_vars = type_checker.check_overlapping_vars(vars, vec![], else_vars);
+    println!("{:?}", overlapping_vars);
 }

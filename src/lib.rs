@@ -1,3 +1,4 @@
+mod debugger;
 mod evaluator;
 mod lexer;
 mod parser;
@@ -5,13 +6,11 @@ mod regex;
 mod transformations;
 mod utils;
 mod validator;
-mod debugger;
 
-use std::fmt::Debug;
-use crate::utils::set_panic_hook;
-use wasm_bindgen::prelude::*;
 use crate::evaluator::Evaluator;
-
+use crate::utils::set_panic_hook;
+use std::fmt::Debug;
+use wasm_bindgen::prelude::*;
 
 // When the `wee_alloc` feature is enabled, use `wee_alloc` as the global
 // allocator.
