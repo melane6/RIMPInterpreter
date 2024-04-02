@@ -44,7 +44,7 @@ impl std::fmt::Debug for Evaluator {
 }
 
 
-
+#[wasm_bindgen]
 impl Evaluator {
     pub(crate) fn new(program: Block) -> Evaluator {
         // Create RIMPInterpreter with necessary environment and functions for the program
@@ -68,8 +68,13 @@ impl Evaluator {
 
     pub(crate) fn get_program(&self) -> String {
         let mut program = String::new();
-        for stmt in self.program.clone() {
-            program.push_str(format!("{};\n", stmt.to_string()).as_str());
+        // check if it is the last statement to not inclued ;
+        for i in 0..self.program.len() {
+            if i == self.program.len() - 1 {
+                program.push_str(format!("{}", self.program[i].to_string()).as_str());
+            } else {
+                program.push_str(format!("{};\n", self.program[i].to_string()).as_str());
+            }
         }
         program
     }
@@ -99,6 +104,11 @@ impl Evaluator {
 
     pub(crate) fn interpret_step(&mut self) {
         self.program = self.eval_small_step_block(self.program.clone());
+        log::debug!("{:?}", self) // Print the state of the interpreter
+    }
+
+    pub(crate) fn step_back(&mut self) {
+        self.back_trace = self.eval_back_step_block();
         log::debug!("{:?}", self) // Print the state of the interpreter
     }
 
