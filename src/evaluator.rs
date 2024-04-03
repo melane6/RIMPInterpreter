@@ -29,7 +29,8 @@ pub(crate) struct Evaluator {
     functions: HashMap<String, (Environment, Block)>,
     function_name: Vec<String>,
     back_trace: Block, // Reverse the steps to get the start of the program
-    program: Block,    //
+    program: Block,
+    original_stmt: bool
 }
 
 // For pretty printing and debugging or displaying the state of the interpreter
@@ -55,7 +56,17 @@ impl Evaluator {
             function_name: vec!["main".to_string()],
             back_trace: vec![],
             program,
+            original_stmt: true
         }
+    }
+
+    pub(crate) fn reset(&mut self) {
+        // Reset the interpreter to the initial state
+        self.counter = Counter::new();
+        self.environment = Environment::new();
+        self.functions = Default::default();
+        self.function_name = vec!["main".to_string()];
+        self.back_trace = vec![];
     }
 
     pub(crate) fn get_environment(&self) -> String {
@@ -459,10 +470,15 @@ impl Evaluator {
         match stmt {
             Stmt::Skip => {
                 self.back_trace.push(Stmt::Skip);
+                self.original_stmt = true;
                 Stmt::Skip
             }
             Stmt::Assign(id, a1) => {
+                if self.original_stmt {
+                    self.back_trace.push(Stmt::Assign(id.clone(), a1.clone()));
+                }
                 let new_a1 = self.eval_small_step_arithmetic(a1.clone());
+                self.original_stmt = false;
                 if new_a1 == a1 {
                     let original_value =
                         self.eval_small_step_arithmetic(ArithmeticExpr::LocalID(id.clone()));
@@ -479,7 +495,15 @@ impl Evaluator {
                 todo!("Implement the unassign statement")
             }
             Stmt::If(boolean, then_block, else_block) => {
+                if self.original_stmt {
+                    self.back_trace.push(Stmt::If(
+                        boolean.clone(),
+                        then_block.clone(),
+                        else_block.clone(),
+                    ));
+                }
                 let new_boolean = self.eval_small_step_boolean_expr(boolean.clone());
+                self.original_stmt = false;
                 if new_boolean == boolean {
                     Stmt::If(boolean, then_block, else_block)
                 } else {
@@ -492,12 +516,21 @@ impl Evaluator {
                 }
             }
             Stmt::While(boolean, mut block) => {
+                if self.original_stmt {
+                    self.back_trace.push(Stmt::While(boolean.clone(), block.clone()));
+                }
                 block.push(Stmt::While(boolean.clone(), block.clone()));
+                self.original_stmt = false;
                 self.back_trace
                     .push(Stmt::While(boolean.clone(), block.clone()));
                 Stmt::If(boolean, block, vec![Stmt::Skip])
             }
             Stmt::Function(function_name, args, block) => {
+                self.back_trace.push(Stmt::Function(
+                    function_name.clone(),
+                    args.clone(),
+                    block.clone(),
+                ));
                 self.eval_stmt(Stmt::Function(
                     function_name.clone(),
                     args.clone(),
@@ -506,6 +539,9 @@ impl Evaluator {
                 Stmt::Skip
             }
             Stmt::Return(expr) => {
+                if self.original_stmt {
+                    self.back_trace.push(Stmt::Return(expr.clone()));
+                }
                 let value = self.eval_small_step_arithmetic(expr.clone());
                 if value == expr.clone() {
                     self.eval_stmt(Stmt::Return(expr.clone()));
@@ -524,25 +560,46 @@ impl Evaluator {
             Stmt::Assign(id, expr) => {
                 if self.function_name.last().unwrap() == "main" {
                     let value = self.eval_arithmetic_expr(expr.clone());
-                    let mut values = self.environment.get(&id).unwrap().clone();
-                    values.insert(0, value);
-                    self.environment.insert(id.clone(), values);
+                    if self.environment.contains_key(&id) {
+                        let mut values = self.environment.get(&id).unwrap().clone();
+                        values.insert(0, value);
+                        self.environment.insert(id.clone(), values);
+                    } else {
+                        let mut values = vec![value];
+                        self.environment.insert(id.clone(), values);
+                    }
                 } else {
                     let value = self.eval_arithmetic_expr(expr.clone());
-                    let mut values = self
+                    // check if the variable is in the function environment
+                    if self
                         .functions
                         .get(self.function_name.last().unwrap())
                         .unwrap()
                         .0
-                        .get(&id)
-                        .unwrap()
-                        .clone();
-                    values.insert(0, value);
-                    self.functions
-                        .get_mut(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .insert(id.clone(), values);
+                        .contains_key(&id)
+                    {
+                        let mut values = self
+                            .functions
+                            .get(self.function_name.last().unwrap())
+                            .unwrap()
+                            .0
+                            .get(&id)
+                            .unwrap()
+                            .clone();
+                        values.insert(0, value);
+                        self.functions
+                            .get_mut(self.function_name.last().unwrap())
+                            .unwrap()
+                            .0
+                            .insert(id.clone(), values);
+                    } else {
+                        let mut values = vec![value];
+                        self.functions
+                            .get_mut(self.function_name.last().unwrap())
+                            .unwrap()
+                            .0
+                            .insert(id.clone(), values);
+                    }
                 }
                 // todo!("Implement the back trace for assign statement")
             }

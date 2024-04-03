@@ -6,6 +6,7 @@ mod regex;
 mod transformations;
 mod utils;
 mod validator;
+mod inverter;
 
 use crate::evaluator::Evaluator;
 use crate::utils::set_panic_hook;

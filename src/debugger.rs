@@ -58,12 +58,25 @@ impl Debugger {
         }
     }
 
+    #[wasm_bindgen]
+    pub fn reset(&mut self, program: String) {
+        // Reset the debugger
+        self.forward_interpreter.reset();
+        self.update_program(program);
+        self.debugger_mode = DebuggerMode::None;
+        self.breakpoints = vec![0];
+    }
+
     pub fn get_environment(&self) -> String {
         format!("{}", self.forward_interpreter.get_environment())
     }
 
     pub fn get_program(&self) -> String {
         format!("{}", self.forward_interpreter.get_program())
+    }
+
+    pub fn get_back_program(&self) -> String {
+        format!("{}", self.forward_interpreter.get_back_program())
     }
 
     pub fn set_breakpoints(&mut self, breakpoints: Vec<usize>) {
@@ -78,6 +91,9 @@ impl Debugger {
 
     pub fn set_debugger_mode(&mut self, mode: DebuggerMode) {
         // Set the debugger mode
+        if mode == DebuggerMode::None {
+            self.forward_interpreter.reset();
+        }
         self.debugger_mode = mode;
     }
 
