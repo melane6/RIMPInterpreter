@@ -38,7 +38,7 @@ impl std::fmt::Debug for Evaluator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            " {{ environment: {},\n back_trace: {} }}",
+            "environment: \n{}\n back_trace: \n{} ",
             self.get_environment(),
             self.get_back_program().to_string()
         )
@@ -74,13 +74,13 @@ impl Evaluator {
         for (key, values) in self.environment.clone() {
             let mut value = String::new();
             for i in 0..values.len() {
-                if i == values.len() - 1 {
-                    value.push_str(format!("{})", values[i]).as_str());
+                if (i == values.len() - 1 || values.len() == 1) {
+                    value.push_str(format!("{}", values[i]).as_str());
                 } else {
                     value.push_str(format!("{}, ", values[i]).as_str());
                 }
             }
-            program.push_str(format!("{}: {}\n", key, value).as_str());
+            program.push_str(format!("\t{}: {}\n", key, value).as_str());
         }
         program
     }
@@ -134,6 +134,49 @@ impl Evaluator {
         self.back_trace.clone()
     }
 
+    fn get_function_env(&mut self, function_name: String, var: String) -> i64 {
+        if function_name == "main" {
+            self.environment
+                .get(&var)
+                .unwrap()
+                .clone()
+                .first()
+                .unwrap()
+                .clone()
+        } else {
+            self.functions
+                .get(self.function_name.last().unwrap())
+                .unwrap()
+                .0
+                .get(&var)
+                .unwrap()
+                .clone().first().unwrap().clone()
+        }
+    }
+    
+    fn set_variable_value(&mut self, function_name: String, var: String, value: i64) {
+        if function_name == "main" {
+            let mut values = self.environment.get(&var).unwrap().clone();
+            values.insert(0, value);
+            self.environment.insert(var.clone(), values);
+        } else {
+            let mut values = self
+                .functions
+                .get(self.function_name.last().unwrap())
+                .unwrap()
+                .0
+                .get(&var)
+                .unwrap()
+                .clone();
+            values.insert(0, value);
+            self.functions
+                .get_mut(self.function_name.last().unwrap())
+                .unwrap()
+                .0
+                .insert(var.clone(), values);
+        }
+    }
+    
     fn check_overlapping(&mut self, boolean_expr : BooleanExpr ,then_block: Block, else_block: Block) -> Vec<String> {
         let mut validator = TypeChecker::new();
         // get environment name
@@ -152,36 +195,18 @@ impl Evaluator {
             let mut mapping = HashMap::new();
             for var in overlapping_vars {
                 // copy the value of the variable to the environment
+                let function_name = self.function_name.last().unwrap().clone();
+                let value = self.get_function_env(function_name.clone(), var.clone());
                 if self.function_name.last().unwrap() == "main" {
-                    let value = self
-                        .environment
-                        .get(&var)
-                        .unwrap()
-                        .clone()
-                        .first()
-                        .unwrap()
-                        .clone();
                     let new_var = format!("{}'", var);
                     mapping.insert(var, new_var.clone());
-                    self.environment.insert(new_var.clone(), vec![value]);
+                    self.set_variable_value(function_name.clone(), new_var.clone(), value);
                     self.back_trace
                         .push(Stmt::Assign(new_var, ArithmeticExpr::Num(value)));
                 } else {
-                    let value = self
-                        .functions
-                        .get(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .get(&var)
-                        .unwrap()
-                        .clone().first().unwrap().clone();
                     let new_var = format!("{}'", var);
                     mapping.insert(var, new_var.clone());
-                    self.functions
-                        .get_mut(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .insert(new_var.clone(), vec![value]);
+                    self.set_variable_value(function_name.clone(), new_var.clone(), value);
                     self.back_trace
                         .push(Stmt::Assign(new_var, ArithmeticExpr::Num(value)));
                 }
@@ -195,46 +220,17 @@ impl Evaluator {
         match expr {
             ArithmeticExpr::Num(n) => ArithmeticExpr::Num(n),
             ArithmeticExpr::LocalID(id) => {
-                if self.function_name.last().unwrap() == "main" {
-                    if self.environment.contains_key(&id) {
-                        ArithmeticExpr::Num(
-                            self.environment
-                                .get(&id)
-                                .unwrap()
-                                .clone()
-                                .first()
-                                .unwrap()
-                                .clone(),
-                        )
-                    } else {
-                        ArithmeticExpr::Num(0) // default value
-                    }
-                } else {
-                    let function_env = self
-                        .functions
-                        .get(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .clone();
+                let function_name = self.function_name.last().unwrap().clone();
+                if self.environment.contains_key(&id) {
                     ArithmeticExpr::Num(
-                        function_env
-                            .get(&id)
-                            .unwrap()
-                            .clone()
-                            .first()
-                            .unwrap()
-                            .clone(),
+                        self.get_function_env(function_name.clone(), id.clone())
                     )
+                } else {
+                    ArithmeticExpr::Num(0) // default value
                 }
             }
             ArithmeticExpr::GlobalID(id) => ArithmeticExpr::Num(
-                self.environment
-                    .get(&id)
-                    .unwrap()
-                    .clone()
-                    .first()
-                    .unwrap()
-                    .clone(),
+                self.get_function_env("main".to_string(), id.clone())
             ),
             ArithmeticExpr::Aop(op, a1, a2) => match *a1 {
                 ArithmeticExpr::Num(num) => {
@@ -390,14 +386,6 @@ impl Evaluator {
         }
     }
 
-    fn get_function_env(&mut self, function_name: String) -> Environment {
-        if function_name == "main" {
-            self.environment.clone()
-        } else {
-            self.functions.get(&function_name).unwrap().0.clone()
-        }
-    }
-
     fn eval_small_step_boolean_expr(&mut self, expr: BooleanExpr) -> BooleanExpr {
         match expr {
             BooleanExpr::Bop(op, a1, a2) => match a1 {
@@ -545,8 +533,18 @@ impl Evaluator {
                     Stmt::Assign(id, new_a1)
                 }
             }
-            Stmt::Unassign(_id, _value) => {
-                todo!("Implement the unassign statement")
+            Stmt::Unassign(id, value) => {
+                // Remove the top value of the id
+                let new_a1 = self.eval_small_step_arithmetic(value.clone());
+                self.original_stmt = false;
+                if new_a1 == value {
+                    self.back_trace
+                        .push(Stmt::Assign(id.clone(), value)); // Add the original statement to the back trace
+                    self.eval_stmt(Stmt::Unassign(id.clone(), new_a1.clone()));
+                    Stmt::Skip
+                } else {
+                    Stmt::Assign(id, new_a1)
+                }
             }
             Stmt::If(boolean, mut then_block, mut else_block) => {
                 if self.original_stmt {
@@ -666,7 +664,7 @@ impl Evaluator {
                 if self.function_name.last().unwrap() == "main" {
                     let value = self.eval_arithmetic_expr(value.clone());
                     let mut values = self.environment.get(&id).unwrap().clone();
-                    values.insert(0, value);
+                    values.remove(0);
                     self.environment.insert(id.clone(), values);
                 } else {
                     let value = self.eval_arithmetic_expr(value.clone());
@@ -678,7 +676,7 @@ impl Evaluator {
                         .get(&id)
                         .unwrap()
                         .clone();
-                    values.insert(0, value);
+                    values.remove(0);
                     self.functions
                         .get_mut(self.function_name.last().unwrap())
                         .unwrap()
