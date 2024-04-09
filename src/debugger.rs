@@ -3,6 +3,7 @@ use crate::lexer::tokenise;
 use crate::parser::parse_rimp;
 use std::cmp::PartialEq;
 use wasm_bindgen::prelude::wasm_bindgen;
+use crate::transformations::translate_program;
 
 #[wasm_bindgen]
 #[derive(PartialEq, Debug, Clone)]
@@ -48,8 +49,9 @@ impl Debugger {
         let result = parse_rimp(tokens);
         match result {
             Ok(program) => {
-                let program = program.iter().next().unwrap();
+                let program = translate_program(program.iter().next().unwrap().clone());
                 self.forward_interpreter = Evaluator::new(program.clone());
+                self.forward_interpreter.set_original_program();
                 return self.forward_interpreter.get_program();
             }
             Err(e) => {

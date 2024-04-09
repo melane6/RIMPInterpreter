@@ -28,9 +28,10 @@ pub(crate) struct Evaluator {
     environment: Environment,
     functions: HashMap<String, (Environment, Block)>,
     function_name: Vec<String>,
-    back_trace: Block, // Reverse the steps to get the start of the program
+    back_trace: Vec<Block>, // Reverse the steps to get the start of the program
     program: Block,
-    original_stmt: bool
+    original_stmt: bool,
+    original_program: Block
 }
 
 // For pretty printing and debugging or displaying the state of the interpreter
@@ -55,8 +56,9 @@ impl Evaluator {
             functions: Default::default(),
             function_name: vec!["main".to_string()],
             back_trace: vec![],
-            program,
-            original_stmt: true
+            program: program.clone(),
+            original_stmt: true,
+            original_program: program.clone()
         }
     }
 
@@ -87,7 +89,7 @@ impl Evaluator {
 
     pub(crate) fn get_program(&self) -> String {
         let mut program = String::new();
-        // check if it is the last statement to not inclued ;
+        // check if it is the last statement to not included ;
         for i in 0..self.program.len() {
             if i == self.program.len() - 1 {
                 program.push_str(format!("{}", self.program[i].to_string()).as_str());
@@ -101,10 +103,15 @@ impl Evaluator {
     pub(crate) fn get_back_program(&self) -> String {
         let mut program = String::new();
         for stmt in self.back_trace.clone() {
-            program.push_str(format!("{};\n", stmt.to_string()).as_str());
+            if stmt.is_empty() {
+                continue;
+            } else {
+                program.push_str(format!("{};\n", stmt.last().unwrap().to_string()).as_str());
+            }
         }
         program
     }
+    
     pub(crate) fn write(&mut self) {
         self.program = self.eval_small_step_block(self.program.clone());
         log::debug!("{:?}", self) // Print the state of the interpreter
@@ -114,8 +121,12 @@ impl Evaluator {
         self.program.is_empty()
     }
 
+    pub(crate) fn set_original_program(&mut self) {
+        self.original_program = self.program.clone();
+    }
+
     pub(crate) fn interpret_all(&mut self) {
-        self.eval_block(self.program.clone());
+        self.eval_block(self.original_program.clone());
         println!("{:?}", self.environment);
         println!("{:?}", self.functions);
     }
@@ -130,11 +141,7 @@ impl Evaluator {
         log::debug!("{:?}", self) // Print the state of the interpreter
     }
 
-    pub(crate) fn get_reverse_program(&mut self) -> Block {
-        self.back_trace.clone()
-    }
-
-    fn get_function_env(&mut self, function_name: String, var: String) -> i64 {
+    fn get_variable_value(&mut self, function_name: String, var: String) -> i64 {
         if function_name == "main" {
             self.environment
                 .get(&var)
@@ -154,20 +161,56 @@ impl Evaluator {
         }
     }
     
-    fn set_variable_value(&mut self, function_name: String, var: String, value: i64) {
+    fn get_variable_values(&self, function_name: String, var: String) -> Vec<i64> {
         if function_name == "main" {
-            let mut values = self.environment.get(&var).unwrap().clone();
-            values.insert(0, value);
-            self.environment.insert(var.clone(), values);
+            self.environment
+                .get(&var)
+                .unwrap()
+                .clone()
         } else {
-            let mut values = self
-                .functions
-                .get(self.function_name.last().unwrap())
+            self.functions
+                .get(&function_name)
                 .unwrap()
                 .0
                 .get(&var)
                 .unwrap()
-                .clone();
+                .clone()
+        }
+    }
+    
+    fn check_id(& self, id: String) -> bool {
+        if self.function_name.last().unwrap() == "main" {
+            self.environment.contains_key(&id)
+        } else {
+            self.functions
+                .get(self.function_name.last().unwrap())
+                .unwrap()
+                .0
+                .contains_key(&id)
+        }
+    }
+    
+    fn set_variable_value(&mut self, function_name: String, var: String, value: i64) {
+        let check = self.check_id(var.clone());
+        if function_name == "main" {
+            let mut values = vec![];
+            if check {
+                values = self.environment.get(&var).unwrap().clone();
+            }
+            values.insert(0, value);
+            self.environment.insert(var.clone(), values);
+        } else {
+            let mut values = vec![];
+            if check {
+                values = self
+                    .functions
+                    .get(self.function_name.last().unwrap())
+                    .unwrap()
+                    .0
+                    .get(&var)
+                    .unwrap()
+                    .clone();
+            }
             values.insert(0, value);
             self.functions
                 .get_mut(self.function_name.last().unwrap())
@@ -177,45 +220,6 @@ impl Evaluator {
         }
     }
     
-    fn check_overlapping(&mut self, boolean_expr : BooleanExpr ,then_block: Block, else_block: Block) -> Vec<String> {
-        let mut validator = TypeChecker::new();
-        // get environment name
-        let env_name = self.function_name.last().unwrap();
-        let condition_vars =
-            validator.check_boolean_expr(boolean_expr.clone(), env_name.clone());
-        // check if the condition variables are in the environment
-        let then_vars = validator.check(then_block.clone(), env_name.clone());
-        let else_vars = validator.check(else_block.clone(), env_name.clone());
-        let overlapping_vars = validator.check_overlapping_vars(condition_vars, then_vars, else_vars);
-        overlapping_vars
-    }
-
-    fn modify_blocks(&mut self, overlapping_vars: Vec<String>, then_block: Block, else_block: Block) -> (Block, Block) {
-        if !overlapping_vars.is_empty() {
-            let mut mapping = HashMap::new();
-            for var in overlapping_vars {
-                // copy the value of the variable to the environment
-                let function_name = self.function_name.last().unwrap().clone();
-                let value = self.get_function_env(function_name.clone(), var.clone());
-                if self.function_name.last().unwrap() == "main" {
-                    let new_var = format!("{}'", var);
-                    mapping.insert(var, new_var.clone());
-                    self.set_variable_value(function_name.clone(), new_var.clone(), value);
-                    self.back_trace
-                        .push(Stmt::Assign(new_var, ArithmeticExpr::Num(value)));
-                } else {
-                    let new_var = format!("{}'", var);
-                    mapping.insert(var, new_var.clone());
-                    self.set_variable_value(function_name.clone(), new_var.clone(), value);
-                    self.back_trace
-                        .push(Stmt::Assign(new_var, ArithmeticExpr::Num(value)));
-                }
-            }
-            // remap all references to the variable in the then and else block
-            return (self.remap_vars(then_block, mapping.clone()),self.remap_vars(else_block, mapping.clone()))
-        }
-        return (then_block, else_block)
-    }
     fn eval_small_step_arithmetic(&mut self, expr: ArithmeticExpr) -> ArithmeticExpr {
         match expr {
             ArithmeticExpr::Num(n) => ArithmeticExpr::Num(n),
@@ -223,14 +227,14 @@ impl Evaluator {
                 let function_name = self.function_name.last().unwrap().clone();
                 if self.environment.contains_key(&id) {
                     ArithmeticExpr::Num(
-                        self.get_function_env(function_name.clone(), id.clone())
+                        self.get_variable_value(function_name.clone(), id.clone())
                     )
                 } else {
                     ArithmeticExpr::Num(0) // default value
                 }
             }
             ArithmeticExpr::GlobalID(id) => ArithmeticExpr::Num(
-                self.get_function_env("main".to_string(), id.clone())
+                self.get_variable_value("main".to_string(), id.clone())
             ),
             ArithmeticExpr::Aop(op, a1, a2) => match *a1 {
                 ArithmeticExpr::Num(num) => {
@@ -510,51 +514,66 @@ impl Evaluator {
             BooleanExpr::False => false,
         }
     }
+    
+    fn update_back_trace(&mut self, stmt: Stmt) {
+        if self.original_stmt {
+            println!("before {:?}", self.back_trace);
+            self.back_trace.push(vec![stmt]);
+            println!("after {:?}", self.back_trace);
+
+        }
+    }
+    
+    fn replace_stmt(&mut self, stmt: Stmt) {
+        if !self.original_stmt {
+            let mut last_statment = self.back_trace
+                .last()
+                .unwrap()
+                .clone();
+            last_statment.push(stmt);
+            self.back_trace.remove(self.back_trace.len() - 1);
+            self.back_trace.push(last_statment);
+            println!("hi {:?}", self.back_trace);
+        }
+    }
 
     fn eval_small_step_stmt(&mut self, stmt: Stmt) -> Stmt {
         match stmt {
             Stmt::Skip => {
-                self.back_trace.push(Stmt::Skip);
+                self.back_trace.last().unwrap().clone().push(Stmt::Skip);
                 self.original_stmt = true;
                 Stmt::Skip
             }
             Stmt::Assign(id, a1) => {
                 let new_a1 = self.eval_small_step_arithmetic(a1.clone());
+                self.update_back_trace(Stmt::Unassign(id.clone(), a1.clone()));
                 self.original_stmt = false;
                 if new_a1 == a1 {
-                    let original_value =
-                        self.eval_small_step_arithmetic(ArithmeticExpr::LocalID(id.clone()));
-                    println!("original value {:?}", original_value);
-                    self.back_trace
-                        .push(Stmt::Unassign(id.clone(), original_value)); // Add the original statement to the back trace
                     self.eval_stmt(Stmt::Assign(id.clone(), new_a1.clone()));
+                    self.original_stmt = true;
                     Stmt::Skip
                 } else {
+                    self.replace_stmt(Stmt::Assign(id.clone(), new_a1.clone()));
                     Stmt::Assign(id, new_a1)
                 }
             }
             Stmt::Unassign(id, value) => {
                 // Remove the top value of the id
                 let new_a1 = self.eval_small_step_arithmetic(value.clone());
+                self.update_back_trace(Stmt::Unassign(id.clone(), value.clone()));
                 self.original_stmt = false;
                 if new_a1 == value {
-                    self.back_trace
-                        .push(Stmt::Assign(id.clone(), value)); // Add the original statement to the back trace
+                    self.replace_stmt(Stmt::Unassign(id.clone(), new_a1.clone()));
                     self.eval_stmt(Stmt::Unassign(id.clone(), new_a1.clone()));
                     Stmt::Skip
                 } else {
+                    self.replace_stmt(Stmt::Assign(id.clone(), new_a1.clone()));
                     Stmt::Assign(id, new_a1)
                 }
             }
-            Stmt::If(boolean, mut then_block, mut else_block) => {
+            Stmt::If(boolean, then_block, else_block) => {
                 if self.original_stmt {
-                    let overlapping_vars = self.check_overlapping(boolean.clone(), then_block.clone(), else_block.clone());
-                    (then_block, else_block) = self.modify_blocks(overlapping_vars, then_block.clone(), else_block.clone());
-                    self.back_trace.push(Stmt::If(
-                        boolean.clone(),
-                        then_block.clone(),
-                        else_block.clone(),
-                    ));
+                    self.update_back_trace(Stmt::If(boolean.clone(), then_block.clone(), else_block.clone()));
                     Stmt::If(boolean.clone(), then_block.clone(), else_block.clone())
                 } else {
                     let new_boolean = self.eval_small_step_boolean_expr(boolean.clone());
@@ -562,27 +581,22 @@ impl Evaluator {
                     if new_boolean == boolean {
                         Stmt::If(boolean, then_block, else_block)
                     } else {
-                        self.back_trace.push(Stmt::If(
-                            boolean.clone(),
-                            then_block.clone(),
-                            else_block.clone(),
-                        )); // Add the original statement to the back trace
+                        self.replace_stmt(Stmt::If(new_boolean.clone(), then_block.clone(), else_block.clone()));
                         Stmt::If(new_boolean, then_block, else_block)
                     }
                 }
             }
             Stmt::While(boolean, mut block) => {
                 if self.original_stmt {
-                    self.back_trace.push(Stmt::While(boolean.clone(), block.clone()));
+                    self.update_back_trace(Stmt::While(boolean.clone(), block.clone()));
                 }
                 block.push(Stmt::While(boolean.clone(), block.clone()));
                 self.original_stmt = false;
-                self.back_trace
-                    .push(Stmt::While(boolean.clone(), block.clone()));
+                self.replace_stmt(Stmt::While(boolean.clone(), block.clone()));
                 Stmt::If(boolean, block, vec![Stmt::Skip])
             }
             Stmt::Function(function_name, args, block) => {
-                self.back_trace.push(Stmt::Function(
+                self.update_back_trace(Stmt::Function(
                     function_name.clone(),
                     args.clone(),
                     block.clone(),
@@ -596,14 +610,14 @@ impl Evaluator {
             }
             Stmt::Return(expr) => {
                 if self.original_stmt {
-                    self.back_trace.push(Stmt::Return(expr.clone()));
+                    self.update_back_trace(Stmt::Return(expr.clone()));
                 }
                 let value = self.eval_small_step_arithmetic(expr.clone());
                 if value == expr.clone() {
                     self.eval_stmt(Stmt::Return(expr.clone()));
                     Stmt::Skip
                 } else {
-                    self.back_trace.push(Stmt::Return(expr.clone()));
+                    self.replace_stmt(Stmt::Return(value.clone()));
                     Stmt::Return(value)
                 }
             }
@@ -614,60 +628,18 @@ impl Evaluator {
     fn eval_stmt(&mut self, stmt: Stmt) {
         match stmt {
             Stmt::Assign(id, expr) => {
-                if self.function_name.last().unwrap() == "main" {
-                    let value = self.eval_arithmetic_expr(expr.clone());
-                    if self.environment.contains_key(&id) {
-                        let mut values = self.environment.get(&id).unwrap().clone();
-                        values.insert(0, value);
-                        self.environment.insert(id.clone(), values);
-                    } else {
-                        let mut values = vec![value];
-                        self.environment.insert(id.clone(), values);
-                    }
-                } else {
-                    let value = self.eval_arithmetic_expr(expr.clone());
-                    // check if the variable is in the function environment
-                    if self
-                        .functions
-                        .get(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .contains_key(&id)
-                    {
-                        let mut values = self
-                            .functions
-                            .get(self.function_name.last().unwrap())
-                            .unwrap()
-                            .0
-                            .get(&id)
-                            .unwrap()
-                            .clone();
-                        values.insert(0, value);
-                        self.functions
-                            .get_mut(self.function_name.last().unwrap())
-                            .unwrap()
-                            .0
-                            .insert(id.clone(), values);
-                    } else {
-                        let mut values = vec![value];
-                        self.functions
-                            .get_mut(self.function_name.last().unwrap())
-                            .unwrap()
-                            .0
-                            .insert(id.clone(), values);
-                    }
-                }
-                // todo!("Implement the back trace for assign statement")
+                let value = self.eval_arithmetic_expr(expr.clone());
+                let function_name = self.function_name.last().unwrap();
+                // check if the variable is in the function environment
+                self.set_variable_value(function_name.clone(), id.clone(), value)
             }
             Stmt::Skip => {}
             Stmt::Unassign(id, value) => {
                 if self.function_name.last().unwrap() == "main" {
-                    let value = self.eval_arithmetic_expr(value.clone());
                     let mut values = self.environment.get(&id).unwrap().clone();
                     values.remove(0);
                     self.environment.insert(id.clone(), values);
                 } else {
-                    let value = self.eval_arithmetic_expr(value.clone());
                     let mut values = self
                         .functions
                         .get(self.function_name.last().unwrap())
@@ -684,23 +656,17 @@ impl Evaluator {
                         .insert(id.clone(), values);
                 }
             }
-            Stmt::If(boolean_expr, mut then_block, mut else_block) => {
-                let overlapping_vars = self.check_overlapping(boolean_expr.clone(), then_block.clone(), else_block.clone());
-                (then_block, else_block) = self.modify_blocks(overlapping_vars, then_block.clone(), else_block.clone());
+            Stmt::If(boolean_expr, then_block, else_block) => {
                 if self.eval_boolean_expr(boolean_expr.clone()) {
                     self.eval_block(then_block.clone());
                 } else {
                     self.eval_block(else_block.clone());
                 }
-                self.back_trace
-                    .push(Stmt::If(boolean_expr, then_block, else_block));
             }
             Stmt::While(boolean, block) => {
                 while self.eval_boolean_expr(boolean.clone()) {
                     self.eval_block(block.clone());
                 }
-                self.back_trace
-                    .push(Stmt::While(boolean.clone(), block.clone()));
             }
             Stmt::Function(function_name, args, block) => {
                 let mut function_env = Environment::new();
@@ -713,53 +679,54 @@ impl Evaluator {
             Stmt::Return(expr) => {
                 if self.function_name.last().unwrap() == "main" {
                     let value = self.eval_arithmetic_expr(expr);
-                    let mut values = self.environment.get("return").unwrap().clone();
-                    values.insert(0, value);
-                    self.environment.insert("return".parse().unwrap(), values);
+                    self.set_variable_value("main".to_string(), "return".to_string(), value);
                 } else {
                     let value = self.eval_arithmetic_expr(expr);
-                    let mut values = self
-                        .functions
-                        .get(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .get("return")
-                        .unwrap()
-                        .clone();
-                    values.insert(0, value);
-                    self.functions
-                        .get_mut(self.function_name.last().unwrap())
-                        .unwrap()
-                        .0
-                        .insert("return".parse().unwrap(), values);
+                    self.set_variable_value(
+                        self.function_name.last().unwrap().clone(),
+                        "return".to_string(),
+                        value,
+                    );
                 }
             }
             _ => {}
         }
     }
 
-    fn eval_back_step_block(&mut self) -> Block {
+    fn eval_back_step_block(&mut self) -> Vec<Block> {
         // Evaluate one step backward in the pass in block
+        println!("{:?}", self.back_trace);
         let mut new_block = self.back_trace.clone();
-        // Remove the last statement from the back trace
-        let remove_statement = self.back_trace.remove(new_block.len() - 1);
-        // Insert the removed statement back to the program
-        match remove_statement {
-            Stmt::Skip
-            | Stmt::Assign(_, _)
-            | Stmt::If(_, _, _)
-            | Stmt::While(_, _)
-            | Stmt::Function(_, _, _)
-            | Stmt::Return(_) => {
-                self.program.insert(0, remove_statement.clone()); // Don't insert Unassign
-            }
-            _ => {}
+        if new_block.is_empty() {
+            return new_block;
         }
-        match remove_statement {
-            Stmt::Unassign(id, value) => {
-                let value = self.eval_arithmetic_expr(value); // Value should be Num
+        // Remove the last statement from the back trace
+        let mut remove_statements = self.back_trace.remove(new_block.len() - 1);
+        
+        let last_statement = remove_statements.last().unwrap().clone();
+
+        // Insert the removed statement back to the program
+        if remove_statements.len() == 1 {
+            match last_statement {
+                Stmt::Skip
+                | Stmt::Assign(_, _)
+                | Stmt::If(_, _, _)
+                | Stmt::While(_, _)
+                | Stmt::Function(_, _, _)
+                | Stmt::Return(_) => {
+                    self.program.insert(0, remove_statements.first().unwrap().clone()); // Don't insert Unassign
+                }
+                Stmt::Unassign(id, value) => {
+                    self.program.insert(0, Stmt::Assign(id.clone(), value.clone()));
+                }
+                _ => {}
+            }
+            return new_block;
+        }
+        match last_statement {
+            Stmt::Unassign(id, value_) => {
                 let mut values = self.environment.get(&id).unwrap().clone();
-                values.insert(0, value);
+                values.remove(0);
                 if self.function_name.last().unwrap() == "main" {
                     self.environment.insert(id.clone(), values);
                 } else {
@@ -771,6 +738,11 @@ impl Evaluator {
                 }
             }
             _ => {}
+        }
+        remove_statements.remove(remove_statements.len() - 1);
+        new_block.push(remove_statements);
+        if new_block.is_empty() {
+            return new_block;
         }
         new_block
     }
@@ -805,98 +777,6 @@ impl Evaluator {
     fn eval_block(&mut self, block: Block) {
         for stmt in block {
             self.eval_stmt(stmt);
-        }
-    }
-
-    fn remap_vars(&mut self, block: Vec<Stmt>, mapping: HashMap<String, String>) -> Block {
-        let mut new_block = vec![];
-        for stmt in block {
-            match stmt {
-                Stmt::Assign(id, value) => {
-                    let arith_expr = self.remap_vars_arithmetic(value, mapping.clone());
-                    for (old, new) in mapping.iter() {
-                        if id == *old {
-                            new_block.push(Stmt::Assign(new.clone(), arith_expr.clone()));
-                        }
-                    }
-                }
-                Stmt::If(boolean, then_block, else_block) => {
-                    let new_boolean = self.remap_vars_bool(boolean, mapping.clone());
-                    let new_then_block = self.remap_vars(then_block, mapping.clone());
-                    let new_else_block = self.remap_vars(else_block, mapping.clone());
-                    new_block.push(Stmt::If(new_boolean, new_then_block, new_else_block));
-                }
-                Stmt::While(boolean_expr, block_while) => {
-                    let new_boolean = self.remap_vars_bool(boolean_expr, mapping.clone());
-                    let block = self.remap_vars(block_while, mapping.clone());
-                    new_block.push(Stmt::While(new_boolean, block));
-                }
-                Stmt::Function(function_name, args, fn_block) => {
-                    let block = self.remap_vars(fn_block, mapping.clone());
-                    new_block.push(Stmt::Function(function_name, args, block));
-                }
-                _ => {}
-            }
-        }
-        new_block
-    }
-
-    fn remap_vars_arithmetic(
-        &mut self,
-        expr: ArithmeticExpr,
-        mapping: HashMap<String, String>,
-    ) -> ArithmeticExpr {
-        match expr {
-            ArithmeticExpr::Num(n) => ArithmeticExpr::Num(n),
-            ArithmeticExpr::LocalID(id) => {
-                for (old, new) in mapping.iter() {
-                    if id == *old {
-                        return ArithmeticExpr::LocalID(new.clone());
-                    }
-                }
-                ArithmeticExpr::LocalID(id)
-            }
-            ArithmeticExpr::GlobalID(id) => {
-                for (old, new) in mapping.iter() {
-                    if id == *old {
-                        return ArithmeticExpr::GlobalID(new.clone());
-                    }
-                }
-                ArithmeticExpr::GlobalID(id)
-            }
-            ArithmeticExpr::Aop(op, a1, a2) => {
-                let new_a1 = self.remap_vars_arithmetic(*a1, mapping.clone());
-                let new_a2 = self.remap_vars_arithmetic(*a2, mapping.clone());
-                ArithmeticExpr::Aop(op, Box::new(new_a1), Box::new(new_a2))
-            }
-            ArithmeticExpr::Call(fn_id, args) => {
-                let mut new_args = vec![];
-                for arg in args {
-                    new_args.push(self.remap_vars_arithmetic(arg, mapping.clone()));
-                }
-                ArithmeticExpr::Call(fn_id, new_args)
-            }
-        }
-    }
-
-    fn remap_vars_bool(
-        &mut self,
-        expr: BooleanExpr,
-        mapping: HashMap<String, String>,
-    ) -> BooleanExpr {
-        match expr {
-            BooleanExpr::Bop(op, a1, a2) => {
-                let new_a1 = self.remap_vars_arithmetic(a1, mapping.clone());
-                let new_a2 = self.remap_vars_arithmetic(a2, mapping.clone());
-                BooleanExpr::Bop(op, new_a1, new_a2)
-            }
-            BooleanExpr::Lop(op, b1, b2) => {
-                let new_b1 = self.remap_vars_bool(*b1, mapping.clone());
-                let new_b2 = self.remap_vars_bool(*b2, mapping.clone());
-                BooleanExpr::Lop(op, Box::new(new_b1), Box::new(new_b2))
-            }
-            BooleanExpr::True => BooleanExpr::True,
-            BooleanExpr::False => BooleanExpr::False,
         }
     }
 }
@@ -971,11 +851,11 @@ fn test_eval_small_step_arithmetic() {
             let mut interpreter = Evaluator::new(program.clone());
             interpreter.interpret_step();
             println!("{:?}", interpreter);
+            interpreter.interpret_step();
+            println!("{:?}", interpreter);
+            interpreter.interpret_step();
+            println!("{:?}", interpreter);
             interpreter.eval_back_step_block();
-            println!("{:?}", interpreter);
-            interpreter.interpret_step();
-            println!("{:?}", interpreter);
-            interpreter.interpret_step();
             println!("{:?}", interpreter);
             interpreter.eval_back_step_block();
             println!("{:?}", interpreter);

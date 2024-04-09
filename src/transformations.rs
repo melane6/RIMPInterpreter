@@ -1,4 +1,6 @@
-use crate::parser::{ArithmeticExpr, Block, Stmt};
+use std::collections::HashMap;
+use crate::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
+use crate::validator::TypeChecker;
 
 /// Converts a stmt that is a tail recursive function to
 /// a while loop.
@@ -75,5 +77,154 @@ pub(crate) fn while_loop_transform(while_statement: Stmt) -> Block {
             vec![assignment, new_stmt]
         },
         _ => panic!("Expected a while statement"),
+    }
+}
+
+pub(crate) fn translate_program(program: Block) -> Block {
+    let mut new_program = vec![];
+    for stmt in program {
+        match stmt {
+            Stmt::If(boolean, then_block, else_block) => {
+                let overlapping_vars = check_overlapping(boolean.clone(), then_block.clone(), else_block.clone());
+                let modified_block = modify_block(overlapping_vars, boolean.clone(), then_block.clone(), else_block.clone());
+                for stmt in modified_block {
+                    new_program.push(stmt);
+                }
+            }
+            _ => {
+                new_program.push(stmt);
+            }
+        }
+    }
+    new_program
+}
+
+fn check_overlapping(boolean_expr : BooleanExpr ,then_block: Block, else_block: Block) -> Vec<String> {
+    let mut validator = TypeChecker::new();
+    // get environment name
+    let condition_vars = validator.check_boolean_expr(boolean_expr.clone());
+    // check if the condition variables are in the environment
+    let then_vars = validator.check(then_block.clone());
+    let else_vars = validator.check(else_block.clone());
+    let overlapping_vars = validator.check_overlapping_vars(condition_vars, then_vars, else_vars);
+    overlapping_vars
+}
+
+fn modify_block(overlapping_vars: Vec<String>, boolean_expr: BooleanExpr, then_block: Block, else_block: Block) -> Block {
+    if !overlapping_vars.is_empty() {
+        let mut mapping = HashMap::new();
+        let mut addtional_stmts = vec![];
+        // Find the overlapping variables and create a new variable with the same value
+        for var in overlapping_vars {
+            let new_var = format!("{}'", var);
+            mapping.insert(new_var.clone(), var);
+        }
+        let mut bool_expr = boolean_expr.clone();
+        let mut then_block = then_block.clone();
+        let mut else_block = else_block.clone();
+
+        // remap all references to the variable in the then and else block
+        bool_expr = remap_vars_bool(bool_expr, mapping.clone());
+        then_block = remap_vars(then_block, mapping.clone());
+        else_block = remap_vars(else_block, mapping.clone());
+
+        for (new_var, var) in mapping {
+            addtional_stmts.push(Stmt::Assign(new_var.clone(), ArithmeticExpr::LocalID(var.clone())));
+        }
+
+        addtional_stmts.push(Stmt::If(bool_expr, then_block, else_block));
+        return addtional_stmts
+    } else {
+        return vec![Stmt::If(boolean_expr, then_block, else_block)]
+    }
+}
+
+fn remap_vars(block: Vec<Stmt>, mapping: HashMap<String, String>) -> Block {
+    let mut new_block = vec![];
+    for stmt in block {
+        match stmt {
+            Stmt::Assign(id, value) => {
+                let arith_expr = remap_vars_arithmetic(value, mapping.clone());
+                for (new, old) in mapping.iter() {
+                    if id == *old {
+                        new_block.push(Stmt::Assign(new.clone(), arith_expr.clone()));
+                    }
+                }
+            }
+            Stmt::If(boolean, then_block, else_block) => {
+                let new_boolean = remap_vars_bool(boolean, mapping.clone());
+                let new_then_block = remap_vars(then_block, mapping.clone());
+                let new_else_block = remap_vars(else_block, mapping.clone());
+                new_block.push(Stmt::If(new_boolean, new_then_block, new_else_block));
+            }
+            Stmt::While(boolean_expr, block_while) => {
+                let new_boolean = remap_vars_bool(boolean_expr, mapping.clone());
+                let block = remap_vars(block_while, mapping.clone());
+                new_block.push(Stmt::While(new_boolean, block));
+            }
+            Stmt::Function(function_name, args, fn_block) => {
+                let block = remap_vars(fn_block, mapping.clone());
+                new_block.push(Stmt::Function(function_name, args, block));
+            }
+            _ => {}
+        }
+    }
+    new_block
+}
+
+fn remap_vars_arithmetic(
+    expr: ArithmeticExpr,
+    mapping: HashMap<String, String>,
+) -> ArithmeticExpr {
+    match expr {
+        ArithmeticExpr::Num(n) => ArithmeticExpr::Num(n),
+        ArithmeticExpr::LocalID(id) => {
+            for (new, old) in mapping.iter() {
+                if id == *old {
+                    return ArithmeticExpr::LocalID(new.clone());
+                }
+            }
+            ArithmeticExpr::LocalID(id)
+        }
+        ArithmeticExpr::GlobalID(id) => {
+            for (old, new) in mapping.iter() {
+                if id == *old {
+                    return ArithmeticExpr::GlobalID(new.clone());
+                }
+            }
+            ArithmeticExpr::GlobalID(id)
+        }
+        ArithmeticExpr::Aop(op, a1, a2) => {
+            let new_a1 = remap_vars_arithmetic(*a1, mapping.clone());
+            let new_a2 = remap_vars_arithmetic(*a2, mapping.clone());
+            ArithmeticExpr::Aop(op, Box::new(new_a1), Box::new(new_a2))
+        }
+        ArithmeticExpr::Call(fn_id, args) => {
+            let mut new_args = vec![];
+            for arg in args {
+                new_args.push(remap_vars_arithmetic(arg, mapping.clone()));
+            }
+            ArithmeticExpr::Call(fn_id, new_args)
+        }
+    }
+}
+
+fn remap_vars_bool(
+    expr: BooleanExpr,
+    mapping: HashMap<String, String>,
+) -> BooleanExpr {
+    match expr {
+        BooleanExpr::Bop(op, a1, a2) => {
+            let new_a1 = remap_vars_arithmetic(a1, mapping.clone());
+            let new_a2 = remap_vars_arithmetic(a2, mapping.clone());
+            BooleanExpr::Bop(op, new_a1, new_a2)
+        }
+        BooleanExpr::Lop(op, b1, b2) => {
+            let new_b1 = remap_vars_bool(*b1, mapping.clone());
+            let new_b2 = remap_vars_bool(*b2, mapping.clone());
+            BooleanExpr::Lop(op, Box::new(new_b1), Box::new(new_b2))
+        }
+        BooleanExpr::True => BooleanExpr::True,
+        BooleanExpr::False => BooleanExpr::False,
     }
 }

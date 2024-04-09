@@ -24,40 +24,31 @@ impl TypeChecker {
         }
     }
 
-    pub fn check(&mut self, program: Block, fn_name: String) -> Vec<String> {
+    pub fn check(&mut self, program: Block) -> Vec<String> {
         let mut variables = vec![];
         for stmt in program {
             match stmt {
                 Stmt::Skip => {}
                 Stmt::Assign(id, _value) => {
-                    if fn_name == "main" {
-                        self.global.insert(id.clone());
-                        variables.push(id.clone());
-                    } else {
-                        if let Some(vars) = self.functions.get_mut(&fn_name) {
-                            vars.push(id.clone());
-                            variables.push(id.clone());
-                        }
-                    }
+                    variables.push(id);
                 }
                 Stmt::If(boolean, then_block, else_block) => {
-                    let mut boolean_vars = self.check_boolean_expr(boolean, fn_name.clone());
-                    let mut then_vars = self.check(then_block, fn_name.clone());
-                    let mut else_vars = self.check(else_block, fn_name.clone());
+                    let mut boolean_vars = self.check_boolean_expr(boolean);
+                    let mut then_vars = self.check(then_block);
+                    let mut else_vars = self.check(else_block);
                     variables.append(&mut boolean_vars);
                     variables.append(&mut then_vars);
                     variables.append(&mut else_vars);
                 }
                 Stmt::While(boolean, block) => {
-                    let mut boolean_vars = self.check_boolean_expr(boolean, fn_name.clone());
-                    let mut block_vars = self.check(block, fn_name.clone());
+                    let mut boolean_vars = self.check_boolean_expr(boolean);
+                    let mut block_vars = self.check(block);
                     variables.append(&mut boolean_vars);
                     variables.append(&mut block_vars);
                 }
                 Stmt::WhileAcc(_, _, _) => {}
-                Stmt::Function(fn_name, arg, block) => {
-                    self.functions.insert(fn_name.clone(), arg);
-                    let mut function_var = self.check(block, fn_name);
+                Stmt::Function(_fn_name, _arg, block) => {
+                    let mut function_var = self.check(block);
                     variables.append(&mut function_var);
                 }
                 _ => {}
@@ -66,18 +57,18 @@ impl TypeChecker {
         variables
     }
 
-    pub fn check_boolean_expr(&mut self, boolean: BooleanExpr, fn_name: String) -> Vec<String> {
+    pub fn check_boolean_expr(&mut self, boolean: BooleanExpr) -> Vec<String> {
         let mut variables = vec![];
         match boolean {
             BooleanExpr::Bop(_, a1, a2) => {
-                let mut a1 = self.check_arithmetic_expr(a1, fn_name.clone());
-                let mut a2 = self.check_arithmetic_expr(a2, fn_name.clone());
+                let mut a1 = self.check_arithmetic_expr(a1);
+                let mut a2 = self.check_arithmetic_expr(a2);
                 variables.append(&mut a1);
                 variables.append(&mut a2);
             }
             BooleanExpr::Lop(_, b1, b2) => {
-                let mut b1 = self.check_boolean_expr(*b1, fn_name.clone());
-                let mut b2 = self.check_boolean_expr(*b2, fn_name.clone());
+                let mut b1 = self.check_boolean_expr(*b1);
+                let mut b2 = self.check_boolean_expr(*b2);
                 variables.append(&mut b1);
                 variables.append(&mut b2);
             }
@@ -90,7 +81,6 @@ impl TypeChecker {
     pub fn check_arithmetic_expr(
         &mut self,
         arithmetic: ArithmeticExpr,
-        fn_name: String,
     ) -> Vec<String> {
         let mut variables = vec![];
         match arithmetic {
@@ -102,14 +92,14 @@ impl TypeChecker {
                 variables.push(var);
             }
             ArithmeticExpr::Aop(_, a1, a2) => {
-                let mut a1_vars = self.check_arithmetic_expr(*a1, fn_name.clone());
-                let mut a2_vars = self.check_arithmetic_expr(*a2, fn_name.clone());
+                let mut a1_vars = self.check_arithmetic_expr(*a1);
+                let mut a2_vars = self.check_arithmetic_expr(*a2);
                 variables.append(&mut a1_vars);
                 variables.append(&mut a2_vars);
             }
             ArithmeticExpr::Call(_function_name, args) => {
                 for arg in args {
-                    let mut arg_vars = self.check_arithmetic_expr(arg, fn_name.clone());
+                    let mut arg_vars = self.check_arithmetic_expr(arg);
                     variables.append(&mut arg_vars);
                 }
             }
@@ -134,19 +124,3 @@ impl TypeChecker {
     }
 }
 
-#[test]
-fn boolean_expr_test() {
-    let mut type_checker = TypeChecker::new();
-    let boolean = BooleanExpr::Bop(
-        "==".to_string(),
-        ArithmeticExpr::Num(1),
-        ArithmeticExpr::LocalID("x".to_string()),
-    );
-    let else_block = vec![Stmt::Assign("x".to_string(), ArithmeticExpr::Num(0))];
-    let vars = type_checker.check_boolean_expr(boolean, "main".to_string());
-    let else_vars = type_checker.check(else_block, "main".to_string());
-    println!("{:?}", vars);
-    println!("{:?}", else_vars);
-    let overlapping_vars = type_checker.check_overlapping_vars(vars, vec![], else_vars);
-    println!("{:?}", overlapping_vars);
-}
