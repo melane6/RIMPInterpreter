@@ -90,6 +90,10 @@ impl Debugger {
         // Get the breakpoints for the debugger
         self.breakpoints.clone()
     }
+    
+    pub fn swap(&mut self) {
+        self.forward_interpreter.swap();
+    }
 
     pub fn set_debugger_mode(&mut self, mode: DebuggerMode) {
         // Set the debugger mode
@@ -113,27 +117,61 @@ impl Debugger {
 
     pub fn step_forward(&mut self) -> String {
         // Run the program one step at a time
-        if self.debugger_mode == DebuggerMode::StepForward {
-            if self.forward_interpreter.get_program().is_empty() {
-                return "Program is empty".to_string();
+        match self.debugger_mode {
+            DebuggerMode::StepForward => {}
+            DebuggerMode::StepBackward => {
+                self.debugger_mode = DebuggerMode::StepForward;
+                self.forward_interpreter.swap()
             }
-            self.forward_interpreter.interpret_step();
-            return self.forward_interpreter.get_environment();
-        } else {
-            return "Interpreter is not in debugger mode".to_string();
+            DebuggerMode::StepInto => {
+                return "Need to implement".to_string();
+            }
+            DebuggerMode::StepOut => {
+                return "Need to implement".to_string();
+            }
+            DebuggerMode::StepOver => {
+                return "Need to implement".to_string();
+            }
+            DebuggerMode::None => {
+                self.forward_interpreter.reset();
+                self.debugger_mode = DebuggerMode::StepForward;
+                self.breakpoints = vec![0];
+            }
         }
+        if self.forward_interpreter.get_program().is_empty() {
+            return "Program is empty".to_string();
+        }
+        self.forward_interpreter.interpret_step();
+        return self.forward_interpreter.get_environment();
     }
 
     pub fn step_backward(&mut self) -> String {
         // Run the program one step at a time in reverse
-        if self.debugger_mode == DebuggerMode::StepBackward {
-            if self.forward_interpreter.get_back_program().is_empty() {
-                return "You are at the start of the program".to_string();
+        match self.debugger_mode {
+            DebuggerMode::StepForward => {
+                self.debugger_mode = DebuggerMode::StepBackward;
+                self.forward_interpreter.swap();
+                println!("Swapped");
+                println!("{:?}", self.forward_interpreter.get_program());
             }
-            self.forward_interpreter.step_back();
-            return self.forward_interpreter.get_environment();
-        } else {
-            return "Interpreter is not in debugger mode".to_string();
+            DebuggerMode::StepBackward => {}
+            DebuggerMode::StepInto => {
+                return "Need to implement".to_string();
+            }
+            DebuggerMode::StepOut => {
+                return "Need to implement".to_string();
+            }
+            DebuggerMode::StepOver => {
+                return "Need to implement".to_string();
+            }
+            DebuggerMode::None => {
+                return "Can't step back yet. Please step forward first".to_string();
+            }
         }
+        if self.forward_interpreter.get_back_program().is_empty() {
+            return "You are at the start of the program".to_string();
+        }
+        self.forward_interpreter.interpret_step();
+        return self.forward_interpreter.get_environment();
     }
 }

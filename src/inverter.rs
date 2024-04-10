@@ -8,7 +8,7 @@ fn invert_block(block: Block) -> Block {
     }
     inverted_block
 }
-fn invert_stat(stat: Stmt) -> Stmt {
+pub(crate) fn invert_stat(stat: Stmt) -> Stmt {
     match stat {
         Stmt::Assign(var, value) => Stmt::Unassign(var, value),
         Stmt::If(condition, then_branch, else_branch) => {
