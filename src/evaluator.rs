@@ -1,6 +1,5 @@
 use crate::lexer::tokenise;
 use crate::parser::{parse_rimp, ArithmeticExpr, Block, BooleanExpr, Stmt};
-use crate::validator::TypeChecker;
 use crate::inverter::invert_stat;
 use std::collections::HashMap;
 use std::fs;
@@ -78,7 +77,7 @@ impl Evaluator {
         for (key, values) in self.environment.clone() {
             let mut value = String::new();
             for i in 0..values.len() {
-                if (i == values.len() - 1 || values.len() == 1) {
+                if i == values.len() - 1 || values.len() == 1 {
                     value.push_str(format!("{}", values[i]).as_str());
                 } else {
                     value.push_str(format!("{}, ", values[i]).as_str());
@@ -364,9 +363,13 @@ impl Evaluator {
                 }
                 self.function_name.push(fn_id.clone());
                 for stmt in self.functions.get(&fn_id).unwrap().1.clone() {
+                    if self.function_name.last().unwrap().clone() != fn_id.clone() {
+                        break
+                    } else {
+                        self.eval_stmt(stmt.clone());
+                    }
                     self.eval_stmt(stmt.clone());
                 }
-                self.function_name.remove(0);
                 self.get_return_value(fn_id)
             }
         }
@@ -575,13 +578,21 @@ impl Evaluator {
                     Stmt::If(new_boolean, then_block, else_block)
                 }
             }
-            Stmt::While(boolean, mut block) => {
+            Stmt::While(boolean, mut block, acc) => {
                 if self.original_stmt {
-                    self.update_back_trace(invert_stat(Stmt::While(boolean.clone(), block.clone())));
+                    self.update_back_trace(invert_stat(Stmt::While(boolean.clone(), block.clone(), acc.clone())));
                 }
-                block.push(Stmt::While(boolean.clone(), block.clone()));
+                block.push(Stmt::While(boolean.clone(), block.clone(), acc.clone()));
                 self.original_stmt = false;
                 Stmt::If(boolean, block, vec![Stmt::Skip])
+            }
+            Stmt::WhileR(boolean, mut block, acc) => {
+                if self.original_stmt {
+                    self.update_back_trace(invert_stat(Stmt::WhileR(boolean.clone(), block.clone(), acc.clone())));
+                }
+                block.push(Stmt::While(boolean.clone(), block.clone(), acc.clone()));
+                self.original_stmt = false;
+                Stmt::If(acc, block, vec![Stmt::Skip])
             }
             Stmt::Function(function_name, args, block) => {
                 self.update_back_trace(invert_stat(Stmt::Function(
@@ -652,8 +663,13 @@ impl Evaluator {
                     self.eval_block(else_block.clone());
                 }
             }
-            Stmt::While(boolean, block) => {
+            Stmt::While(boolean, block, _) => {
                 while self.eval_boolean_expr(boolean.clone()) {
+                    self.eval_block(block.clone());
+                }
+            }
+            Stmt::WhileR(_, block, acc) => {
+                while self.eval_boolean_expr(acc.clone()) {
                     self.eval_block(block.clone());
                 }
             }
@@ -676,6 +692,7 @@ impl Evaluator {
                         "return".to_string(),
                         value,
                     );
+                    self.function_name.remove(0);
                 }
             }
             _ => {}

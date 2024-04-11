@@ -18,8 +18,8 @@ pub(crate) fn invert_stat(stat: Stmt) -> Stmt {
                 invert_block(else_branch),
             )
         }
-        Stmt::While(condition, block) => {
-            Stmt::While(condition, invert_block(block))
+        Stmt::While(condition, block, acc) => {
+            Stmt::WhileR(condition, invert_block(block), acc)
         }
         Stmt::Function(name, args, block) => {
             Stmt::Function(name, args, invert_block(block))
@@ -28,8 +28,8 @@ pub(crate) fn invert_stat(stat: Stmt) -> Stmt {
         Stmt::Unassign(var, value) => {
             Stmt::Assign(var, value)
         }
-        Stmt::WhileAcc(_, _, _) => {
-            Stmt::Skip
+        Stmt::WhileR(condition, block, acc) => {
+            Stmt::While(condition, invert_block(block), acc)
         }
         Stmt::Return(value) => {
             Stmt::Return(value) // TODO: Add an unreturn?
@@ -72,6 +72,7 @@ mod tests {
         let stat = Stmt::While(
             BooleanExpr::Bop("==".to_string(), ArithmeticExpr::Num(1), ArithmeticExpr::Num(1)),
             vec![Stmt::Assign("x".to_string(), ArithmeticExpr::Num(1)), Stmt::Assign("y".to_string(), ArithmeticExpr::Num(2)), Stmt::Assign("z".to_string(), ArithmeticExpr::Num(3))],
+            BooleanExpr::False,
         );
         let inverted_stat = invert_stat(stat);
         assert_eq!(
@@ -79,6 +80,7 @@ mod tests {
             Stmt::While(
                 BooleanExpr::Bop("==".to_string(), ArithmeticExpr::Num(1), ArithmeticExpr::Num(1)),
                 vec![Stmt::Unassign("z".to_string(), ArithmeticExpr::Num(3)),Stmt::Unassign("y".to_string(), ArithmeticExpr::Num(2)), Stmt::Unassign("x".to_string(), ArithmeticExpr::Num(1))],
+                BooleanExpr::False,
             )
         );
     }

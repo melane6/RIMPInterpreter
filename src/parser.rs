@@ -44,8 +44,8 @@ pub enum Stmt {
     Assign(String, ArithmeticExpr),
     Unassign(String, ArithmeticExpr),
     If(BooleanExpr, Block, Block),
-    While(BooleanExpr, Block),
-    WhileAcc(BooleanExpr, Block, String),
+    While(BooleanExpr, Block, BooleanExpr),
+    WhileR(BooleanExpr, Block, BooleanExpr),
     Function(String, FnArgs, Block), // function name, arguments, body
     Return(ArithmeticExpr),
 }
@@ -67,19 +67,18 @@ impl fmt::Display for Stmt {
                 }
                 write!(f, "{}", if_stmt)
             }
-            Stmt::While(boolean, block) => {
+            Stmt::While(boolean, block, _) => {
                 let mut while_stmt = format!("while {} do\n", boolean.to_string());
                 for stmt in block {
                     while_stmt.push_str(&format!("  {}\n", stmt.to_string()));
                 }
                 write!(f, "{}", while_stmt)
             }
-            Stmt::WhileAcc(boolean, block, acc) => {
-                let mut while_stmt = format!("while {} do\n", boolean.to_string());
+            Stmt::WhileR(_, block, boolean_acc) => {
+                let mut while_stmt = format!("while {} do\n", boolean_acc.clone()); //todo check
                 for stmt in block {
                     while_stmt.push_str(&format!("  {}\n", stmt.to_string()));
                 }
-                while_stmt.push_str(&format!("  {} := {} + 1\n", acc, acc));
                 write!(f, "{}", while_stmt)
             }
             Stmt::Function(fn_name, args, block) => {
@@ -185,6 +184,11 @@ fn display_code() {
                 Box::new(ArithmeticExpr::Num(1)),
             ),
         )],
+        BooleanExpr::Bop(
+            "!=".to_string(),
+            ArithmeticExpr::LocalID("acc".to_string()),
+            ArithmeticExpr::Num(0),
+        )
     );
     println!("{:?}", code.to_string());
     println!("{:?}", code2.to_string());
@@ -1020,7 +1024,7 @@ fn while_parser() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
                 ),
             ),
         ),
-        |(_, (b, (_, (_, (block, _)))))| while_loop_transform(Stmt::While(b, block)),
+        |(_, (b, (_, (_, (block, _)))))| while_loop_transform(Stmt::While(b, block, BooleanExpr::True)),
     )(ts)
     {
         Ok(parsed) => Ok(parsed),

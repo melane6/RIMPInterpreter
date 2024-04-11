@@ -1,0 +1,10 @@
+// Tail-recursive program
+fn factorial(n, acc) {
+    if n == 0 {
+        acc
+    } else {
+        factorial(n - 1, acc * n)
+    };
+}
+
+result := factorial(5, 1)

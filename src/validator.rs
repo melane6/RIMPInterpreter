@@ -40,13 +40,13 @@ impl TypeChecker {
                     variables.append(&mut then_vars);
                     variables.append(&mut else_vars);
                 }
-                Stmt::While(boolean, block) => {
+                Stmt::While(boolean, block, _) => {
                     let mut boolean_vars = self.check_boolean_expr(boolean);
                     let mut block_vars = self.check(block);
                     variables.append(&mut boolean_vars);
                     variables.append(&mut block_vars);
                 }
-                Stmt::WhileAcc(_, _, _) => {}
+                Stmt::WhileR(_, _, _) => {}
                 Stmt::Function(_fn_name, _arg, block) => {
                     let mut function_var = self.check(block);
                     variables.append(&mut function_var);
