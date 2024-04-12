@@ -1,7 +1,7 @@
 use crate::lexer::{tokenise, Keyword, Operation, Token};
 use crate::parser::ArithmeticExpr::Aop;
 use crate::parser::ParseErrorMessage::Errors;
-use crate::transformations::while_loop_transform;
+use crate::transformations::{while_loop_transform, function_to_loop};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -142,6 +142,7 @@ pub enum BooleanExpr {
     False,
     Bop(String, ArithmeticExpr, ArithmeticExpr),
     Lop(String, Box<BooleanExpr>, Box<BooleanExpr>),
+    Not(Box<BooleanExpr>),
 }
 
 impl fmt::Display for BooleanExpr {
@@ -154,6 +155,9 @@ impl fmt::Display for BooleanExpr {
             }
             BooleanExpr::Lop(op, b1, b2) => {
                 write!(f, "({} {} {})", b1.to_string(), op, b2.to_string())
+            }
+            BooleanExpr::Not(b) => {
+                write!(f, "!({})", b.to_string())
             }
         }
     }
@@ -645,6 +649,26 @@ fn bop_test() {
     println!("{:?}", result);
 }
 
+fn not_parser() -> impl Fn(Vec<Token>) -> ParseResult<Operation, Vec<Token>> {
+    move |ts: Vec<Token>| {
+        let mut result = HashSet::new();
+        if ts.first().is_some() {
+            match ts.first().unwrap() {
+                Token::Op(s) => match s {
+                    Operation::Not => {
+                        result.insert((s.clone(), ts[1..].to_vec()));
+                        Ok(result)
+                    }
+                    _ => Err((ParseErrorMessage::ExpectedBoolOperation, ts.len())),
+                },
+                _ => Err((ParseErrorMessage::ExpectedBoolOperation, ts.len())),
+            }
+        } else {
+            Err((ParseErrorMessage::EOF, ts.len()))
+        }
+    }
+}
+
 fn lop_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<Operation, Vec<Token>> {
     move |ts: Vec<Token>| {
         let mut result = HashSet::new();
@@ -930,12 +954,15 @@ fn boolean_expr() -> impl Fn(Vec<Token>) -> ParseResult<BooleanExpr, Vec<Token>>
                 seq(arithmetic_expr(), seq(bop_parser(), arithmetic_expr())),
                 |(a1, (op, a2))| BooleanExpr::Bop(op.to_string(), a1, a2),
             ),
-            map(
-                seq(
-                    parenthesis("(".to_string()),
-                    seq(boolean_expr(), parenthesis(")".to_string())),
+            alt(
+                map(
+                    seq(not_parser(), boolean_expr()),
+                    |(_, b)| BooleanExpr::Not(Box::new(b)),
                 ),
-                |(_, (b, _))| b,
+                map(
+                    seq(boolean_expr(), seq(lop_token_parser(), boolean_expr())),
+                    |(b1, (op, b2))| BooleanExpr::Lop(op.to_string(), Box::new(b1), Box::new(b2)),
+                ),
             ),
         )(ts)
     }
@@ -1262,7 +1289,7 @@ fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                 ),
             ),
         ),
-        |(id, (args, (_, (block, _))))| Stmt::Function(id.to_string(), args, block),
+        |(id, (args, (_, (block, _))))| function_to_loop(id, block, args),
     )(ts)
     {
         Ok(parsed) => Ok(parsed),

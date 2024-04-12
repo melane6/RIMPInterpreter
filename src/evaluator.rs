@@ -492,6 +492,13 @@ impl Evaluator {
             },
             BooleanExpr::True => BooleanExpr::True,
             BooleanExpr::False => BooleanExpr::False,
+            BooleanExpr::Not(b) => match *b.clone() { 
+                BooleanExpr::True => BooleanExpr::False,
+                BooleanExpr::False => BooleanExpr::True,
+                _ => {
+                    self.eval_small_step_boolean_expr(*b)
+                }
+            }
         }
     }
     fn eval_boolean_expr(&mut self, expr: BooleanExpr) -> bool {
@@ -520,6 +527,9 @@ impl Evaluator {
             }
             BooleanExpr::True => true,
             BooleanExpr::False => false,
+            BooleanExpr::Not(b1) => {
+                !self.eval_boolean_expr(*b1)
+            }
         }
     }
     
@@ -621,7 +631,6 @@ impl Evaluator {
                     Stmt::Return(value)
                 }
             }
-            _ => Stmt::Skip,
         }
     }
 
@@ -695,7 +704,6 @@ impl Evaluator {
                     self.function_name.remove(0);
                 }
             }
-            _ => {}
         }
     }
 
@@ -844,7 +852,7 @@ fn print_program() {
     match result {
         Ok(program) => {
             let program = program.iter().next().unwrap();
-            let mut interpreter = Evaluator::new(program.clone());
+            let interpreter = Evaluator::new(program.clone());
             println!("{}", interpreter.get_program());
         }
         Err(e) => {

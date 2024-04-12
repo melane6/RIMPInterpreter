@@ -74,6 +74,10 @@ impl TypeChecker {
             }
             BooleanExpr::True => {}
             BooleanExpr::False => {}
+            BooleanExpr::Not(b1) => {
+                let mut b1 = self.check_boolean_expr(*b1);
+                variables.append(&mut b1);
+            }
         }
         variables
     }

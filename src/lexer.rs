@@ -581,6 +581,7 @@ pub enum Operation {
     Multiply,
     Divide,
     Power,
+    Not,
 }
 
 impl fmt::Display for Operation {
@@ -602,6 +603,7 @@ impl fmt::Display for Operation {
             Operation::Multiply => write!(f, "*"),
             Operation::Divide => write!(f, "/"),
             Operation::Power => write!(f, "^"),
+            Operation::Not => write!(f, "!"),
         }
     }
 }
@@ -625,6 +627,7 @@ impl fmt::Debug for Operation {
             Operation::Multiply => write!(f, "*"),
             Operation::Divide => write!(f, "/"),
             Operation::Power => write!(f, "^"),
+            Operation::Not => write!(f, "!"),
         }
     }
 }
@@ -648,6 +651,8 @@ impl FromStr for Operation {
             "-" => Ok(Operation::Minus),
             "*" => Ok(Operation::Multiply),
             "/" => Ok(Operation::Divide),
+            "^" => Ok(Operation::Power),
+            "!" => Ok(Operation::Not),
             _ => Err(()),
         }
     }
