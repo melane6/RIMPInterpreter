@@ -32,6 +32,38 @@ pub enum ParseErrorMessage {
     InvalidReturnStatement,
 }
 
+// Format the error message
+impl ParseErrorMessage {
+    pub fn to_string(&self) -> String {
+        match self {
+            ParseErrorMessage::UnexpectedToken(token) => format!("Unexpected token: {}", token.to_string()),
+            ParseErrorMessage::SyntaxError(s) => format!("Syntax error: {}", s),
+            ParseErrorMessage::FunctionNotImplemented(s) => {
+                format!("Function not implemented: {}", s)
+            }
+            ParseErrorMessage::ExpectedToken(token) => format!("Expected token: {}", token.to_string()),
+            ParseErrorMessage::ExpectedOperation => "Expected an arithmetic operation".to_string(),
+            ParseErrorMessage::ExpectedBoolOperation => "Expected a boolean operation".to_string(),
+            ParseErrorMessage::EOF => "Unexpected end of file or missing a semi colon".to_string(),
+            Errors(e1, e2) => {
+                format!("Error 1: {}\nError 2: {}", e1.to_string(), e2.to_string())
+            }
+            ParseErrorMessage::MalformedProgram => "Malformed program".to_string(),
+            ParseErrorMessage::MalformedFunctionDefinition => "Malformed function definition".to_string(),
+            ParseErrorMessage::MalformedBlock => "Malformed block".to_string(),
+            ParseErrorMessage::MalformedIfStatement => "Malformed if statement".to_string(),
+            ParseErrorMessage::MalformedWhileStatement => "Malformed while statement".to_string(),
+            ParseErrorMessage::MalformedAssignment => "Malformed assignment".to_string(),
+            ParseErrorMessage::MalformedFunctionCall => "Malformed function call".to_string(),
+            ParseErrorMessage::MalformedBooleanExpression => "Malformed boolean expression".to_string(),
+            ParseErrorMessage::MalformedArithmeticExpression => "Malformed arithmetic expression".to_string(),
+            ParseErrorMessage::MalformedArgumentList => "Malformed argument list".to_string(),
+            ParseErrorMessage::NotAValidStatement => "Not a valid statement".to_string(),
+            ParseErrorMessage::InvalidReturnStatement => "Invalid return statement".to_string(),
+        }
+    }
+}
+
 pub type ParseError = (ParseErrorMessage, usize);
 
 pub type Block = Vec<Stmt>;
@@ -243,8 +275,8 @@ fn alt<'a, I, T, Left, Right>(
     right_parser: Right,
 ) -> impl Fn(I) -> ParseResult<T, I>
 where
-    I: Debug + Clone + PartialEq + Eq + Hash + 'static,
     T: Debug + Clone + PartialEq + Eq + Hash + 'static,
+    I: Debug + Clone + PartialEq + Eq + Hash + 'static,
     Left: Fn(I) -> ParseResult<T, I>,
     Right: Fn(I) -> ParseResult<T, I>,
 {
@@ -260,7 +292,13 @@ where
             }
             (Ok(left), Err(_)) => Ok(left),
             (Err(_), Ok(right)) => Ok(right),
-            (Err(left_error), Err(_right_error)) => Err(left_error),
+            (Err(left_error), Err(right_error)) => {
+                if left_error.1 > right_error.1 {
+                    Err(left_error)
+                } else {
+                    Err(right_error)
+                }
+            }
         }
     }
 }
@@ -303,7 +341,9 @@ where
                     Ok(result)
                 }
             }
-            Err(e) => Err(e),
+            Err(e) => {
+                Err(e) 
+            },
         }
     }
 }
@@ -445,7 +485,9 @@ fn function_id_token_parser() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<
                 )),
             }
         } else {
-            Err((ParseErrorMessage::EOF, ts.len()))
+            Err((ParseErrorMessage::ExpectedToken(
+                Token::Id("Some function id".parse().unwrap()),
+            ), ts.len()))
         }
     }
 }
@@ -812,7 +854,7 @@ fn arithmetic_expr() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<T
             |(fa, (op, a))| ArithmeticExpr::Aop(op.to_string(), Box::new(fa), Box::new(a)),
         ),
         term(),
-    )(ts)
+    )(ts.clone())
     {
         Ok(parsed) => Ok(parsed),
         Err(e) => Err((
@@ -820,7 +862,7 @@ fn arithmetic_expr() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<T
                 Box::from(e.0),
                 Box::from(ParseErrorMessage::MalformedArithmeticExpression),
             ),
-            e.1,
+            ts.len(),
         )),
     }
 }
@@ -908,7 +950,7 @@ fn params() -> impl Fn(Vec<Token>) -> ParseResult<Vec<ArithmeticExpr>, Vec<Token
             },
         ),
         map(arithmetic_expr(), |param| vec![param]),
-    )(ts)
+    )(ts.clone())
     {
         Ok(parsed) => Ok(parsed),
         Err(e) => Err((
@@ -916,7 +958,7 @@ fn params() -> impl Fn(Vec<Token>) -> ParseResult<Vec<ArithmeticExpr>, Vec<Token
                 Box::from(e.0),
                 Box::from(ParseErrorMessage::MalformedArgumentList),
             ),
-            e.1,
+            ts.len(),
         )),
     }
 }
@@ -947,6 +989,21 @@ fn factor() -> impl Fn(Vec<Token>) -> ParseResult<ArithmeticExpr, Vec<Token>> {
     }
 }
 
+fn uni_bool_expr() -> impl Fn(Vec<Token>) -> ParseResult<BooleanExpr, Vec<Token>> {
+    move |ts| {
+        alt(
+            map(
+                seq(not_parser(), boolean_expr()),
+                |(_, b)| BooleanExpr::Not(Box::new(b)),
+            ),
+            map(
+                seq(boolean_expr(), seq(lop_token_parser(), boolean_expr())),
+                |(b1, (op, b2))| BooleanExpr::Lop(op.to_string(), Box::new(b1), Box::new(b2)),
+            ),
+        )(ts)
+    }
+}
+
 fn boolean_expr() -> impl Fn(Vec<Token>) -> ParseResult<BooleanExpr, Vec<Token>> {
     move |ts| {
         alt(
@@ -954,15 +1011,12 @@ fn boolean_expr() -> impl Fn(Vec<Token>) -> ParseResult<BooleanExpr, Vec<Token>>
                 seq(arithmetic_expr(), seq(bop_parser(), arithmetic_expr())),
                 |(a1, (op, a2))| BooleanExpr::Bop(op.to_string(), a1, a2),
             ),
-            alt(
-                map(
-                    seq(not_parser(), boolean_expr()),
-                    |(_, b)| BooleanExpr::Not(Box::new(b)),
+            map(
+                seq(
+                    parenthesis("(".to_string()),
+                    seq(boolean_expr(), parenthesis(")".to_string())),
                 ),
-                map(
-                    seq(boolean_expr(), seq(lop_token_parser(), boolean_expr())),
-                    |(b1, (op, b2))| BooleanExpr::Lop(op.to_string(), Box::new(b1), Box::new(b2)),
-                ),
+                |(_, (b, _))| b,
             ),
         )(ts)
     }
@@ -990,17 +1044,13 @@ fn element() -> impl Fn(Vec<Token>) -> ParseResult<String, Vec<Token>> {
     }
 }
 
-// Need to modify this to check if any variables used in boolean expressions and in each block
-// are defined in the current scope and if not, throw an error and if there are any overlapping
-// variables that are being modified in the blocks but used in the boolean expression, then remap the
-// variables in the blocks to a new variable name and assign the value of the original variable to the
-// new variable name and then use the new variable name in the block and the boolean expression
+
 fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
     move |ts| match map(
         seq(
             keyword_parser("if".to_string()),
             seq(
-                boolean_expr(),
+                alt(boolean_expr(), uni_bool_expr()),
                 seq(
                     keyword_parser("then".to_string()),
                     seq(block(), seq(keyword_parser("else".to_string()), block())),
@@ -1008,7 +1058,7 @@ fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
             ),
         ),
         |(_, (b, (_, (a1, (_, a2)))))| Stmt::If(b, a1, a2),
-    )(ts)
+    )(ts.clone())
     {
         Ok(parsed) => Ok(parsed),
         Err(e) => Err((
@@ -1017,7 +1067,8 @@ fn if_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
                 Box::from(ParseErrorMessage::MalformedIfStatement),
             ),
             e.1,
-        )),
+        )
+        ),
     }
 }
 
@@ -1041,7 +1092,7 @@ fn while_parser() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
         seq(
             keyword_parser("while".to_string()),
             seq(
-                boolean_expr(),
+                alt(boolean_expr(), uni_bool_expr()),
                 seq(
                     keyword_parser("do".to_string()),
                     seq(
@@ -1052,7 +1103,7 @@ fn while_parser() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
             ),
         ),
         |(_, (b, (_, (_, (block, _)))))| while_loop_transform(Stmt::While(b, block, BooleanExpr::True)),
-    )(ts)
+    )(ts.clone())
     {
         Ok(parsed) => Ok(parsed),
         Err(e) => Err((
@@ -1060,7 +1111,7 @@ fn while_parser() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
                 Box::from(e.0),
                 Box::from(ParseErrorMessage::MalformedWhileStatement),
             ),
-            e.1,
+            ts.len(),
         )),
     }
 }
@@ -1305,14 +1356,6 @@ fn function_parser() -> impl Fn(Vec<Token>) -> ParseResult<Stmt, Vec<Token>> {
 
 #[test]
 fn function_parser_test() {
-    let code = "def facty(n) {
-    fact := 1 ;
-}
-    while n > 0 do {
-        fact := fact * n;
-        n := n - 1
-    }
-}";
     let tokens = vec![
         Token::Keyword(Keyword::Def),
         Token::Id("main".to_string()),
@@ -1409,18 +1452,28 @@ fn parse_program_test() {
 }
 
 pub(crate) fn parse_rimp(tokens: Vec<Token>) -> Result<HashSet<Block>, ParseError> {
-    let parsed = stmts()(tokens);
+    let parsed = stmts()(tokens.clone());
     match parsed {
         Ok(parsed) => {
             let mut result = HashSet::new();
-            for (head, tail) in parsed {
+            let mut tokens_not_processed = 0;
+            for (head, tail) in parsed.clone() {
                 if tail.is_empty() {
                     result.insert(head.clone());
+                } else {
+                    println!("tal{:?}", tail);
+                    tokens_not_processed = tail.len();
                 }
             }
-            Ok(result)
+            if result.is_empty() {
+                Err((ParseErrorMessage::ExpectedToken(Token::Semi), tokens_not_processed))
+            } else {
+                Ok(result)
+            }
         }
-        Err(e) => Err(e),
+        Err(e) => {
+            Err(e)
+        },
     }
 }
 

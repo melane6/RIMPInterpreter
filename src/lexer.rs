@@ -563,6 +563,28 @@ pub enum Token {
     Comma,
 }
 
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Token::Semi => write!(f, ";"),
+            Token::LParent => write!(f, "{{"),
+            Token::RParent => write!(f, "}}"),
+            Token::LBracket => write!(f, "("),
+            Token::RBracket => write!(f, ")"),
+            Token::Id(s) => write!(f, "{}", s),
+            Token::GlobalId(s) => write!(f, "{}", s),
+            Token::FnId(s) => write!(f, "{}", s),
+            Token::Op(o) => write!(f, "{}", o.to_string()),
+            Token::Num(n) => write!(f, "{}", n),
+            Token::Keyword(k) => write!(f, "{}", k.to_string()),
+            Token::String(s) => write!(f, "{}", s),
+            Token::Comment(s) => write!(f, "{}", s),
+            Token::Whitespaces(s) => write!(f, "{}", s),
+            Token::Comma => write!(f, ","),
+        }
+    }
+}
+
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Operation {
     Assign,

@@ -7,6 +7,7 @@ mod transformations;
 mod utils;
 mod validator;
 mod inverter;
+mod error_handler;
 
 use crate::evaluator::Evaluator;
 use crate::utils::set_panic_hook;

@@ -15,3 +15,75 @@
 //   ParseError {
 //      token: 5,
 //      message: ParseErrorMessage::ExpectedToken(Token::FnId("fn".to_string())), E
+
+
+use crate::{lexer, parser};
+use crate::evaluator::Evaluator;
+use crate::lexer::Token;
+use crate::parser::{Block, parse_rimp};
+
+
+pub(crate) fn get_program(block: Block) -> String {
+    let mut program = String::new();
+    // check if it is the last statement to not included ;
+    for i in 0..block.len() {
+        if i == block.len() - 1 {
+            program.push_str(format!("{}", block[i].to_string()).as_str());
+        } else {
+            program.push_str(format!("{};\n", block[i].to_string()).as_str());
+        }
+    }
+    program
+}
+pub fn source_point_of_error(tokens: Vec<Token>, parsed: (Block, Vec<Token>)) -> String {
+    let (block, not_processed_tokens) = parsed;
+    let parsed = get_program(block);
+    println!("Parsed: {}", parsed);
+    // Remove tokens that are already parsed
+    let mut tokens = tokens.clone();
+    while tokens.len() > not_processed_tokens.len() {
+        let token = tokens.remove(0);
+        println!("Token: {:?}", token);
+    }
+    
+    println!("Tokens left: {:?}", tokens);
+    
+    println!("Error at: {:?}", tokens.last().unwrap());
+    let parser_error = parse_rimp(tokens.clone());
+    match parser_error {
+        Ok(_) => {
+            println!("No error found");
+        }
+        Err(e) => {
+            println!("Error found: {:?}", e);
+        }
+    }
+    
+    parsed
+}
+pub fn run(program: String) -> String {
+    let tokens = lexer::tokenise(program.as_str());
+    let result = parser::parse_rimp(tokens);
+    
+    match result {
+        Ok(program) => {
+            let program = program.iter().next().unwrap();
+            let mut evaluator = Evaluator::new(program.clone());
+            evaluator.interpret_all();
+            return format!("{:?}", evaluator);
+        }
+        Err(e) => {
+            return format!("Failed to translate program due to {:?}", e);
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_source_point_of_error() {
+        let program = "x:=4; y:=7; if 3>y then x=4 else y :=4".to_string();
+        println!("{}", run(program));
+    }
+}
