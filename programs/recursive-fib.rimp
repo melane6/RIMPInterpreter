@@ -1,5 +1,5 @@
 // Recursive program
-fn fibonacci(n: i64) -> i64 {
+fn fibonacci(n){
     if n <= 1 {
         n
     } else {

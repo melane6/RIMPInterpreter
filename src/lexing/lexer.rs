@@ -1,7 +1,7 @@
 use crate::lexing::regex::{der, nullable, Regex};
 use log::debug;
 use std::fmt;
-use std::fmt::Formatter;
+use std::fmt::{Formatter, write};
 use crate::lexing::regex::Regex::Range;
 
 
@@ -293,6 +293,12 @@ pub fn modified_simp(r: &Regex) -> (Regex, Box<dyn Fn(Box<Val>) -> Box<Val>>) {
 pub enum LexingError {
     MatchingError,
     TokenError(String),
+    KeywordError(String),
+    OperatorError(String),
+    NumberError(String),
+    IdentifierError(String),
+    StringError(String),
+    IgnoreError,
 }
 
 impl fmt::Display for LexingError {
@@ -300,6 +306,24 @@ impl fmt::Display for LexingError {
         match self {
             LexingError::MatchingError => write!(f, "Matching Error"),
             LexingError::TokenError(s) => write!(f, "Token Error: {}", s),
+            LexingError::KeywordError(s) => {
+                write!(f, "Keyword Error for {}", s)
+            }
+            LexingError::OperatorError(e) => {
+                write!(f, "Operator Error for {}", e)
+            }
+            LexingError::NumberError(s) => {
+                write!(f, "Number Error for {}", s)
+            }
+            LexingError::IdentifierError(s) => {
+                write!(f, "Identifier Error for {}", s)
+            }
+            LexingError::StringError(s) => {
+                write!(f, "String Error for {}", s)
+            }
+            LexingError::IgnoreError => {
+                write!(f, "Ignore Error")
+            }
         }
     }
 }
@@ -309,6 +333,7 @@ pub type LexResult = Result<Val, LexingError>;
 pub fn lex(s: &str, r: Regex) -> LexResult {
     match s.chars().next() {
         None => {
+            
             if nullable(&r) {
                 Ok(mkeps(&r))
             } else {
@@ -317,11 +342,16 @@ pub fn lex(s: &str, r: Regex) -> LexResult {
             }
         }
         Some(c) => {
-            // println!("started char: {}", c);
+            println!("started char: {}", c);
             let (r_simp, f_simp) = modified_simp(&der(&c, &r));
             match lex(&s[1..], r_simp) {
-                Ok(v) => Ok(inj(&r, &c, &f_simp(Box::new(v)))),
-                Err(x) => Err(x),
+                Ok(v) => { 
+                    Ok(inj(&r, &c, &f_simp(Box::new(v)))) 
+                },
+                Err(x) => { 
+                    println!("Error: {:?} for {}", x, s);
+                    Err(x) 
+                },
             }
         }
     }
@@ -329,8 +359,12 @@ pub fn lex(s: &str, r: Regex) -> LexResult {
 
 pub fn lexing(s: &str, r: Regex) -> Result<Vec<(String, String)>, LexingError> {
     match lex(s, r) {
-        Ok(v) => Ok(env(&v)),
-        Err(x) => Err(x),
+        Ok(v) => { 
+            Ok(env(&v)) 
+        },
+        Err(x) => { 
+            Err(x) 
+        },
     }
 }
 

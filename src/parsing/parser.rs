@@ -1524,7 +1524,7 @@ fn parse_program(tokens: Vec<Token>) -> Result<HashSet<Block>, ParseError> {
 }
 #[test]
 fn parse_file_test() {
-    let tokens = match fs::read_to_string("programs/while_func.rimp") {
+    let tokens = match fs::read_to_string("programs/recursive.rimp") {
         Ok(program) => tokenise(program.clone().as_str()),
         Err(e) => {
             println!("Failed to read file. {}", e);

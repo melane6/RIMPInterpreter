@@ -42,7 +42,7 @@ impl Language {
             Language::ID => Regex::Seq(
                 Box::new(Language::LETTERS.regex()),
                 Box::new(Regex::Star(Box::new(Regex::alt_rs(
-                    &Language::LETTERS.regex(),
+                    &Language::SYM.regex(),
                     &Language::DIGIT.regex(),
                 )))),
             ),
@@ -71,7 +71,7 @@ impl Language {
                                             "true",
                                             &Regex::alt_r(
                                                 "false",
-                                                &Regex::alt_r("def", &Regex::alt("do", "return")),
+                                                &Regex::alt("do", "return")),
                                             ),
                                         ),
                                     ),
@@ -80,7 +80,6 @@ impl Language {
                         ),
                     ),
                 ),
-            ),
             Language::SEMI => Char(';'),
             Language::COMMA => Char(','),
             Language::OP => Regex::alt_r(
@@ -120,7 +119,7 @@ impl Language {
             Language::GlobalID => Regex::Seq(
                 Box::new(Language::CAPITAL.regex()),
                 Box::new(Regex::Star(Box::new(Regex::alt_rs(
-                    &Language::LETTERS.regex(),
+                    &Language::SYM.regex(),
                     &Language::DIGIT.regex(),
                 )))),
             ),
@@ -450,28 +449,28 @@ fn token(s1: &str, s2: &str) -> Result<Token, LexingError> {
             let op = Operation::from_str(s);
             match op {
                 Ok(op) => Ok(Token::Op(op)),
-                Err(_) => Err(LexingError::TokenError(s.to_string())),
+                Err(_) => Err(LexingError::OperatorError(s.to_string())),
             }
         },
         ("n", s) => {
             let num = s.parse::<i64>();
             match num {
                 Ok(num) => Ok(Token::Num(num)),
-                Err(_) => Err(LexingError::TokenError(s.to_string())),
+                Err(_) => Err(LexingError::NumberError(s.to_string())),
             }
         },
         ("k", s) => {
             let keyword = Keyword::from_str(s);
             match keyword {
                 Ok(keyword) => Ok(Token::Keyword(keyword)),
-                Err(_) => Err(LexingError::TokenError(s.to_string())),
+                Err(_) => Err(LexingError::KeywordError(s.to_string())),
             }
         },
         ("str", s) => Ok(Token::String(escape(s))),
         ("fn", s) => Ok(Token::FnId(s.to_string())),
         ("co", ",") => Ok(Token::Comma),
         ("gi", s) => Ok(Token::GlobalId(s.to_string())),
-        _ => Err(LexingError::TokenError(s1.to_string())),
+        _ => Err(LexingError::IgnoreError),
     }
 }
 
@@ -492,10 +491,14 @@ pub(crate) fn tokenise(s: &str) -> Result<Vec<Token>,LexingError> {
         Ok(records) => {
             for (s1, s2) in records {
                 match token(&s1, &s2) {
-                    Ok(token) => tokens.push(token),
+                    Ok(token) => {
+                        tokens.push(token.clone());
+                        println!("Token: {:?}", token);
+                    },
                     Err(e) => {
-                        debug!("Error: {:?}", e);
-                        return Err(e);
+                       if e == LexingError::IgnoreError {
+                           continue;
+                       }
                     }
                 }
             }
@@ -510,7 +513,8 @@ pub(crate) fn tokenise(s: &str) -> Result<Vec<Token>,LexingError> {
 
 #[test]
 fn test_lexing() {
-    let file = std::fs::read_to_string("programs/fib.rimp").unwrap();
+    let file = std::fs::read_to_string("programs/recursive.rimp").unwrap();
+    println!("file: {}", file.clone());
     let tokens = tokenise(file.as_str());
     println!("tokens: {:?}", tokens)
 }
