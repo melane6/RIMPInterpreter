@@ -2,7 +2,7 @@ use core::fmt;
 use std::collections::HashSet;
 use std::str::FromStr;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub enum Regex {
     Zero,
     One,
@@ -21,6 +21,41 @@ pub enum Regex {
     Not(Box<Regex>),
     Cfun(fn(char) -> bool),
     Recd(String, Box<Regex>),
+}
+
+// check equality of regex
+impl PartialEq for Regex {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Regex::Zero, Regex::Zero) => true,
+            (Regex::One, Regex::One) => true,
+            (Regex::Char(c1), Regex::Char(c2)) => c1 == c2,
+            (Regex::Alt(r1, r2), Regex::Alt(s1, s2)) => r1 == s1 && r2 == s2,
+            (Regex::Seq(r1, r2), Regex::Seq(s1, s2)) => r1 == s1 && r2 == s2,
+            (Regex::Star(r), Regex::Star(s)) => r == s,
+            (Regex::Ntimes(r, n), Regex::Ntimes(s, m)) => r == s && n == m,
+            (Regex::Range(l1), Regex::Range(l2)) => l1 == l2,
+            (Regex::Plus(r), Regex::Plus(s)) => r == s,
+            (Regex::Optional(r), Regex::Optional(s)) => r == s,
+            (Regex::And(r1, r2), Regex::And(s1, s2)) => r1 == s1 && r2 == s2,
+            (Regex::Upto(r, n), Regex::Upto(s, m)) => r == s && n == m,
+            (Regex::From(r, n), Regex::From(s, m)) => r == s && n == m,
+            (Regex::Between(r, n, m), Regex::Between(s, p, q)) => r == s && n == p && m == q,
+            (Regex::Not(r), Regex::Not(s)) => r == s,
+            (Regex::Cfun(f), Regex::Cfun(g)) => {
+                let mut i = 0;
+                while i < 128 {
+                    if f(i as u8 as char) != g(i as u8 as char) {
+                        return false;
+                    }
+                    i += 1;
+                }
+                true
+            }
+            (Regex::Recd(x, r), Regex::Recd(y, s)) => x == y && r == s,
+            _ => false,
+        }
+    }
 }
 
 fn charlist2rexp(s: &str) -> Regex {

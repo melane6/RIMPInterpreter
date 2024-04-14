@@ -1,7 +1,7 @@
-use crate::lexer::{tokenise, Keyword, Operation, Token};
-use crate::parser::ArithmeticExpr::Aop;
-use crate::parser::ParseErrorMessage::Errors;
-use crate::transformations::{while_loop_transform, function_to_loop};
+use crate::lexing::rimp_tokeniser::{tokenise, Keyword, Operation, Token};
+use crate::parsing::parser::ArithmeticExpr::Aop;
+use crate::parsing::parser::ParseErrorMessage::Errors;
+use crate::parsing::transformations::{while_loop_transform, function_to_loop};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -107,7 +107,7 @@ impl fmt::Display for Stmt {
                 write!(f, "{}", while_stmt)
             }
             Stmt::WhileR(_, block, boolean_acc) => {
-                let mut while_stmt = format!("while {} do\n", boolean_acc.clone()); //todo check
+                let mut while_stmt = format!("while {} do\n", boolean_acc.to_string()); //todo check
                 for stmt in block {
                     while_stmt.push_str(&format!("  {}\n", stmt.to_string()));
                 }

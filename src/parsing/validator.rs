@@ -1,4 +1,4 @@
-use crate::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
+use crate::parsing::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
 use std::collections::{HashMap, HashSet};
 
 type GlobalVar = HashSet<String>; // Set of global variables

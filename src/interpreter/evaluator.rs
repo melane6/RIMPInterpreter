@@ -1,10 +1,12 @@
-use crate::lexer::tokenise;
-use crate::parser::{parse_rimp, ArithmeticExpr, Block, BooleanExpr, Stmt};
-use crate::inverter::invert_stat;
+use crate::lexing::rimp_tokeniser::tokenise;
+use crate::parsing::parser::{parse_rimp, ArithmeticExpr, Block, BooleanExpr, Stmt};
+use crate::parsing::transformations::translate_program;
+use crate::interpreter::inverter::invert_stat;
 use std::collections::HashMap;
 use std::fs;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::transformations::translate_program;
+
+
 
 #[derive(Debug)]
 struct Counter {

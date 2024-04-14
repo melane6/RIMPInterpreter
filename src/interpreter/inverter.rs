@@ -1,4 +1,4 @@
-use crate::parser::{Block, Stmt};
+use crate::parsing::parser::{Block, Stmt};
 
 fn invert_block(block: Block) -> Block {
     let mut inverted_block = vec![];
@@ -40,7 +40,7 @@ pub(crate) fn invert_stat(stat: Stmt) -> Stmt {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::{ArithmeticExpr, BooleanExpr, Stmt};
+    use crate::parsing::parser::{ArithmeticExpr, BooleanExpr, Stmt};
 
     #[test]
     fn test_invert_assignment() {

@@ -17,10 +17,9 @@
 //      message: ParseErrorMessage::ExpectedToken(Token::FnId("fn".to_string())), E
 
 
-use crate::{lexer, parser};
-use crate::evaluator::Evaluator;
-use crate::lexer::Token;
-use crate::parser::{Block, parse_rimp};
+use crate::interpreter::evaluator::Evaluator;
+use crate::lexing::rimp_tokeniser::{Token, tokenise};
+use crate::parsing::parser::{Block, parse_rimp};
 
 
 pub(crate) fn get_program(block: Block) -> String {
@@ -62,14 +61,14 @@ pub fn source_point_of_error(tokens: Vec<Token>, parsed: (Block, Vec<Token>)) ->
     parsed
 }
 pub fn run(program: String) -> String {
-    let tokens = lexer::tokenise(program.as_str());
+    let tokens = tokenise(program.as_str());
     let tokens = match tokens {
         Ok(tokens) => tokens,
         Err(e) => {
             return format!("Failed to tokenise program due to {:?}", e);
         }
     };
-    let result = parser::parse_rimp(tokens);
+    let result = parse_rimp(tokens);
     
     match result {
         Ok(program) => {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
-use crate::validator::TypeChecker;
+use crate::parsing::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
+use crate::parsing::validator::TypeChecker;
 
 /// Converts a stmt that is a tail recursive function to
 /// a while loop.
@@ -206,8 +206,8 @@ fn check_tail_recursion_arithmetic(function_name: String, arithmetic_expr: Arith
 // Test the check_tail_recursion
 #[cfg(test)]
 mod test {
-    use crate::transformations::{check_tail_recursion, function_to_loop};
-    use crate::parser::{ArithmeticExpr, BooleanExpr, Stmt};
+    use crate::parsing::transformations::{check_tail_recursion, function_to_loop};
+    use crate::parsing::parser::{ArithmeticExpr, BooleanExpr, Stmt};
 
     #[test]
     fn test_check_tail_recursion() {

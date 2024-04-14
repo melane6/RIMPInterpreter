@@ -1,9 +1,9 @@
-use crate::evaluator::Evaluator;
-use crate::lexer::tokenise;
-use crate::parser::parse_rimp;
+use crate::interpreter::evaluator::Evaluator;
+use crate::lexing::rimp_tokeniser::tokenise;
+use crate::parsing::parser::parse_rimp;
 use std::cmp::PartialEq;
 use wasm_bindgen::prelude::wasm_bindgen;
-use crate::transformations::translate_program;
+use crate::parsing::transformations::translate_program;
 
 #[wasm_bindgen]
 #[derive(PartialEq, Debug, Clone)]
