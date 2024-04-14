@@ -46,6 +46,12 @@ impl Debugger {
     #[wasm_bindgen]
     pub fn update_program(&mut self, program: String) -> String {
         let tokens = tokenise(program.clone().as_str());
+        let tokens = match tokens {
+            Ok(tokens) => tokens,
+            Err(e) => {
+                return format!("Failed to tokenise program due to {:?}", e);
+            }
+        };
         let result = parse_rimp(tokens);
         match result {
             Ok(program) => {
@@ -118,10 +124,17 @@ impl Debugger {
     pub fn step_forward(&mut self) -> String {
         // Run the program one step at a time
         match self.debugger_mode {
-            DebuggerMode::StepForward => {}
+            DebuggerMode::StepForward => {
+                if self.forward_interpreter.get_program().is_empty() {
+                    return "Program is empty".to_string();
+                }
+                self.forward_interpreter.interpret_step();
+                return self.forward_interpreter.get_environment();
+            }
             DebuggerMode::StepBackward => {
                 self.debugger_mode = DebuggerMode::StepForward;
-                self.forward_interpreter.swap()
+                self.forward_interpreter.swap();
+                return self.forward_interpreter.get_environment();
             }
             DebuggerMode::StepInto => {
                 return "Need to implement".to_string();
@@ -136,13 +149,9 @@ impl Debugger {
                 self.forward_interpreter.reset();
                 self.debugger_mode = DebuggerMode::StepForward;
                 self.breakpoints = vec![0];
+                return self.forward_interpreter.get_environment();
             }
         }
-        if self.forward_interpreter.get_program().is_empty() {
-            return "Program is empty".to_string();
-        }
-        self.forward_interpreter.interpret_step();
-        return self.forward_interpreter.get_environment();
     }
 
     pub fn step_backward(&mut self) -> String {
@@ -153,8 +162,15 @@ impl Debugger {
                 self.forward_interpreter.swap();
                 println!("Swapped");
                 println!("{:?}", self.forward_interpreter.get_program());
+                return self.forward_interpreter.get_environment();
             }
-            DebuggerMode::StepBackward => {}
+            DebuggerMode::StepBackward => {
+                if self.forward_interpreter.get_back_program().is_empty() {
+                    return "You are at the start of the program".to_string();
+                }
+                self.forward_interpreter.interpret_step_back();
+                return self.forward_interpreter.get_environment();
+            }
             DebuggerMode::StepInto => {
                 return "Need to implement".to_string();
             }
@@ -168,10 +184,5 @@ impl Debugger {
                 return "Can't step back yet. Please step forward first".to_string();
             }
         }
-        if self.forward_interpreter.get_back_program().is_empty() {
-            return "You are at the start of the program".to_string();
-        }
-        self.forward_interpreter.interpret_step();
-        return self.forward_interpreter.get_environment();
     }
 }

@@ -207,7 +207,7 @@ fn check_tail_recursion_arithmetic(function_name: String, arithmetic_expr: Arith
 #[cfg(test)]
 mod test {
     use crate::transformations::{check_tail_recursion, function_to_loop};
-    use crate::parser::{ArithmeticExpr, Block, BooleanExpr, Stmt};
+    use crate::parser::{ArithmeticExpr, BooleanExpr, Stmt};
 
     #[test]
     fn test_check_tail_recursion() {
@@ -450,13 +450,10 @@ fn modify_block(overlapping_vars: Vec<String>, boolean_expr: BooleanExpr, then_b
             mapping.insert(new_var.clone(), var);
         }
         let mut bool_expr = boolean_expr.clone();
-        let mut then_block = then_block.clone();
-        let mut else_block = else_block.clone();
+        
 
         // remap all references to the variable in the then and else block
         bool_expr = remap_vars_bool(bool_expr, mapping.clone());
-        then_block = remap_vars(then_block, mapping.clone());
-        else_block = remap_vars(else_block, mapping.clone());
 
         for (new_var, var) in mapping {
             addtional_stmts.push(Stmt::Assign(new_var.clone(), ArithmeticExpr::LocalID(var.clone())));

@@ -292,6 +292,16 @@ pub fn modified_simp(r: &Regex) -> (Regex, Box<dyn Fn(Box<Val>) -> Box<Val>>) {
 #[derive(Debug, PartialEq)]
 pub enum LexingError {
     MatchingError,
+    TokenError(String),
+}
+
+impl fmt::Display for LexingError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            LexingError::MatchingError => write!(f, "Matching Error"),
+            LexingError::TokenError(s) => write!(f, "Token Error: {}", s),
+        }
+    }
 }
 
 pub type LexResult = Result<Val, LexingError>;
@@ -756,23 +766,41 @@ impl fmt::Display for Keyword {
     }
 }
 
-fn token(s1: &str, s2: &str) -> Option<Token> {
+fn token(s1: &str, s2: &str) -> Result<Token, LexingError> {
     debug!("s1: {} s2: {}", s1, s2);
     match (s1, s2) {
-        ("s", ";") => Some(Token::Semi),
-        ("p", "{") => Some(Token::LParent),
-        ("p", "}") => Some(Token::RParent),
-        ("p", "(") => Some(Token::LBracket),
-        ("p", ")") => Some(Token::RBracket),
-        ("i", s) => Some(Token::Id(s.to_string())),
-        ("o", s) => Some(Token::Op(Operation::from_str(s).unwrap())),
-        ("n", s) => Some(Token::Num(s.parse().ok().unwrap())),
-        ("k", s) => Some(Token::Keyword(Keyword::from_str(s).unwrap())),
-        ("str", s) => Some(Token::String(escape(s))),
-        ("fn", s) => Some(Token::FnId(s.to_string())),
-        ("co", ",") => Some(Token::Comma),
-        ("gi", s) => Some(Token::GlobalId(s.to_string())),
-        _ => None,
+        ("s", ";") => Ok(Token::Semi),
+        ("p", "{") => Ok(Token::LParent),
+        ("p", "}") => Ok(Token::RParent),
+        ("p", "(") => Ok(Token::LBracket),
+        ("p", ")") => Ok(Token::RBracket),
+        ("i", s) => Ok(Token::Id(s.to_string())),
+        ("o", s) => { 
+            let op = Operation::from_str(s);
+            match op {
+                Ok(op) => Ok(Token::Op(op)),
+                Err(_) => Err(LexingError::TokenError(s.to_string())),
+            }
+        },
+        ("n", s) => {
+            let num = s.parse::<i64>();
+            match num {
+                Ok(num) => Ok(Token::Num(num)),
+                Err(_) => Err(LexingError::TokenError(s.to_string())),
+            }
+        },
+        ("k", s) => {
+            let keyword = Keyword::from_str(s);
+            match keyword {
+                Ok(keyword) => Ok(Token::Keyword(keyword)),
+                Err(_) => Err(LexingError::TokenError(s.to_string())),
+            }
+        },
+        ("str", s) => Ok(Token::String(escape(s))),
+        ("fn", s) => Ok(Token::FnId(s.to_string())),
+        ("co", ",") => Ok(Token::Comma),
+        ("gi", s) => Ok(Token::GlobalId(s.to_string())),
+        _ => Err(LexingError::TokenError(s1.to_string())),
     }
 }
 
@@ -787,22 +815,26 @@ fn escape(s: &str) -> String {
     escaped
 }
 
-pub(crate) fn tokenise(s: &str) -> Vec<Token> {
+pub(crate) fn tokenise(s: &str) -> Result<Vec<Token>,LexingError> {
     let mut tokens = vec![];
     match lexing(s, Language::RIMPRegex.regex()) {
         Ok(records) => {
             for (s1, s2) in records {
                 match token(&s1, &s2) {
-                    Some(token) => tokens.push(token),
-                    _ => {}
+                    Ok(token) => tokens.push(token),
+                    Err(e) => {
+                        debug!("Error: {:?}", e);
+                        return Err(e);
+                    }
                 }
             }
         }
         Err(e) => {
             debug!("Error: {:?}", e);
+            return Err(e);
         }
     }
-    tokens
+    Ok(tokens)
 }
 
 #[test]

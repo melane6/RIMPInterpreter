@@ -1137,13 +1137,19 @@ fn while_parser_test() {
 fn block() -> impl Fn(Vec<Token>) -> ParseResult<Block, Vec<Token>> {
     move |ts| match alt(
         map(
-            seq(stmt(), seq(semi_colon_parser(), block())),
-            |(stmt, (_, mut block))| {
-                block.insert(0, stmt);
-                block
-            },
+            seq(
+                parenthesis("{".to_string()),
+                seq(
+                    stmts(),
+                    parenthesis("}".to_string()),
+                ),
+            ),
+            |(_, (s, _))| s,
         ),
-        alt(map(stmt(), |stmt| vec![stmt]), while_parser()),
+        map(
+            stmt(),
+            |s| vec![s],
+        ),
     )(ts)
     {
         Ok(parsed) => Ok(parsed),
@@ -1446,6 +1452,13 @@ fn stmts_test() {
 #[test]
 fn parse_program_test() {
     let tokens = tokenise("n := 4  Fact := 1");
+    let tokens = match tokens {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            println!("Failed to tokenise program. {}", e);
+            return;
+        }
+    };
     println!("{:?}", tokens);
     let result = stmts()(tokens);
     println!("{:?}", result);
@@ -1515,6 +1528,13 @@ fn parse_file_test() {
         Ok(program) => tokenise(program.clone().as_str()),
         Err(e) => {
             println!("Failed to read file. {}", e);
+            return;
+        }
+    };
+    let tokens = match tokens {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            println!("Failed to tokenise program. {}", e);
             return;
         }
     };

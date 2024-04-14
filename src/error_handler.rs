@@ -63,6 +63,12 @@ pub fn source_point_of_error(tokens: Vec<Token>, parsed: (Block, Vec<Token>)) ->
 }
 pub fn run(program: String) -> String {
     let tokens = lexer::tokenise(program.as_str());
+    let tokens = match tokens {
+        Ok(tokens) => tokens,
+        Err(e) => {
+            return format!("Failed to tokenise program due to {:?}", e);
+        }
+    };
     let result = parser::parse_rimp(tokens);
     
     match result {
